@@ -3,7 +3,8 @@ capture_images.py
 
 Webcam capture module for self-collected face datasets.
 Supports multiple sessions, face detection constraints, real-time feedback,
-and structured logging.
+and structured logging. All submenus are handled directly in the OpenCV window
+for a seamless, non-blocking user experience.
 
 Usage:
     python capture_images.py --session 1
@@ -26,7 +27,6 @@ from mediapipe.tasks.python import vision
 MODEL_URL = "https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/1/blaze_face_short_range.tflite"
 MODEL_PATH = "blaze_face_short_range.tflite"
 
-# Ensure the detector model exists
 def ensure_model_exists():
     if not os.path.exists(MODEL_PATH):
         print(f"[INFO] Face detector model not found. Downloading from:\n{MODEL_URL}...")
@@ -97,7 +97,6 @@ def main():
         "attacks": len([f for f in os.listdir(categories["attacks"])])
     }
 
-    # Sub-category counts tracking (for session summary)
     bad_quality_types = {
         "dark": len([f for f in os.listdir(categories["bad_quality"]) if "dark" in f]),
         "bright": len([f for f in os.listdir(categories["bad_quality"]) if "bright" in f]),
@@ -121,8 +120,8 @@ def main():
     print("  F -> Front Face")
     print("  L -> Left Pose")
     print("  R -> Right Pose")
-    print("  B -> Bad Quality Submenu (in terminal)")
-    print("  A -> Attack Sample Submenu (in terminal)")
+    print("  B -> Bad Quality Menu (select type on screen using keys 1-5)")
+    print("  A -> Attack Sample Menu (select type on screen using keys 1-5)")
     print("  Q -> Quit & Generate Summary")
     print("="*50 + "\n")
 
@@ -136,8 +135,8 @@ def main():
     feedback_color = (0, 255, 0)
     feedback_expiry = 0.0
 
-    # Keep track of terminal submenu state
-    in_submenu = False
+    # Submenu state: None, "bad_quality", or "attacks"
+    active_menu = None
 
     while True:
         ret, frame = cap.read()
@@ -182,18 +181,51 @@ def main():
                     cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 0), 2)
         y_offset += 25
 
-        # Instructions
-        instructions = [
-            "F - Front Face", "L - Left Pose", "R - Right Pose",
-            "B - Bad Quality", "A - Attack Sample", "Q - Quit"
-        ]
-        for inst in instructions:
-            cv2.putText(display_frame, inst, (15, y_offset),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.45, (255, 255, 255), 1)
-            y_offset += 20
+        # Instructions (show only if no menu is active)
+        if active_menu is None:
+            instructions = [
+                "F - Front Face", "L - Left Pose", "R - Right Pose",
+                "B - Bad Quality", "A - Attack Sample", "Q - Quit"
+            ]
+            for inst in instructions:
+                cv2.putText(display_frame, inst, (15, y_offset),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.45, (255, 255, 255), 1)
+                y_offset += 20
+        elif active_menu == "bad_quality":
+            cv2.putText(display_frame, "Select Bad Quality (Press 1-5):", (15, y_offset),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 165, 255), 2)
+            y_offset += 22
+            menu_opts = [
+                "1 - Too Dark",
+                "2 - Overexposed",
+                "3 - Motion Blur",
+                "4 - Extreme Angle",
+                "5 - Occlusion",
+                "ESC/Any - Cancel"
+            ]
+            for opt in menu_opts:
+                cv2.putText(display_frame, opt, (15, y_offset),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.45, (200, 200, 255), 1)
+                y_offset += 20
+        elif active_menu == "attacks":
+            cv2.putText(display_frame, "Select Attack (Press 1-5):", (15, y_offset),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
+            y_offset += 22
+            menu_opts = [
+                "1 - Printed Photo",
+                "2 - Screen Replay",
+                "3 - Video Replay",
+                "4 - Frozen Frame",
+                "5 - Multiple Faces",
+                "ESC/Any - Cancel"
+            ]
+            for opt in menu_opts:
+                cv2.putText(display_frame, opt, (15, y_offset),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.45, (200, 200, 255), 1)
+                y_offset += 20
         
         # Display counters
-        y_offset += 10
+        y_offset += 15
         cv2.putText(display_frame, "Saved:", (15, y_offset),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 2)
         y_offset += 20
@@ -214,12 +246,6 @@ def main():
         if current_time < feedback_expiry:
             cv2.putText(display_frame, feedback_text, (15, display_frame.shape[0] - 20),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.6, feedback_color, 2)
-
-        # Show preview
-        if in_submenu:
-            # Draw submenu alert
-            cv2.putText(display_frame, "TERMINAL SUBMENU ACTIVE", (150, 150),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 3)
 
         cv2.imshow("Self-Collection Capture", display_frame)
 
@@ -276,9 +302,53 @@ def main():
             return f"[SAVED] {fname}", (0, 255, 0)
 
         # Key action handlers
-        if key == ord("q"):
+        if key == ord("q") or key == 27 and active_menu is None:
             break
 
+        # If a submenu is active, process selections 1-5
+        elif active_menu == "bad_quality":
+            sub_map = {
+                ord("1"): ("bad_dark", "dark"),
+                ord("2"): ("bad_bright", "bright"),
+                ord("3"): ("bad_blur", "blur"),
+                ord("4"): ("bad_angle", "angle"),
+                ord("5"): ("bad_occlusion", "occlusion")
+            }
+            if key in sub_map:
+                prefix, sub_cat = sub_map[key]
+                msg, color = save_captured_image("bad_quality", prefix, sub_cat)
+                feedback_text = msg
+                feedback_color = color
+                feedback_expiry = time.time() + 2.0
+                active_menu = None
+            elif key != 255:  # Any other key cancels
+                feedback_text = "Cancelled"
+                feedback_color = (0, 0, 255)
+                feedback_expiry = time.time() + 1.5
+                active_menu = None
+
+        elif active_menu == "attacks":
+            sub_map = {
+                ord("1"): ("attack_printed", "printed", False),
+                ord("2"): ("attack_screen", "screen", False),
+                ord("3"): ("attack_video", "video", False),
+                ord("4"): ("attack_frozen", "frozen", False),
+                ord("5"): ("attack_multiple", "multiple", True)
+            }
+            if key in sub_map:
+                prefix, sub_cat, is_mult = sub_map[key]
+                msg, color = save_captured_image("attacks", prefix, sub_cat, is_multiple_attack=is_mult)
+                feedback_text = msg
+                feedback_color = color
+                feedback_expiry = time.time() + 2.0
+                active_menu = None
+            elif key != 255:  # Any other key cancels
+                feedback_text = "Cancelled"
+                feedback_color = (0, 0, 255)
+                feedback_expiry = time.time() + 1.5
+                active_menu = None
+
+        # Normal main menu keys
         elif key == ord("f"):
             msg, color = save_captured_image("front", "front")
             feedback_text = msg
@@ -298,70 +368,10 @@ def main():
             feedback_expiry = time.time() + 2.0
 
         elif key == ord("b"):
-            in_submenu = True
-            # Update display immediately with the submenu warning
-            submenu_frame = display_frame.copy()
-            cv2.putText(submenu_frame, "TERMINAL SUBMENU ACTIVE", (120, 150),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
-            cv2.imshow("Self-Collection Capture", submenu_frame)
-            cv2.waitKey(1)
-
-            print("\nSelect Bad Quality Type:")
-            print("1. Too Dark")
-            print("2. Overexposed")
-            print("3. Motion Blur")
-            print("4. Extreme Angle")
-            print("5. Occlusion")
-            choice = input("Choice (1-5): ").strip()
-            
-            sub_map = {"1": ("bad_dark", "dark"), "2": ("bad_bright", "bright"), "3": ("bad_blur", "blur"), "4": ("bad_angle", "angle"), "5": ("bad_occlusion", "occlusion")}
-            if choice in sub_map:
-                prefix, sub_cat = sub_map[choice]
-                msg, color = save_captured_image("bad_quality", prefix, sub_cat)
-                feedback_text = msg
-                feedback_color = color
-            else:
-                print("[WARN] Invalid option selected.")
-                feedback_text = "[WARN] Invalid selection"
-                feedback_color = (0, 0, 255)
-            
-            feedback_expiry = time.time() + 2.0
-            in_submenu = False
+            active_menu = "bad_quality"
 
         elif key == ord("a"):
-            in_submenu = True
-            # Update display immediately with the submenu warning
-            submenu_frame = display_frame.copy()
-            cv2.putText(submenu_frame, "TERMINAL SUBMENU ACTIVE", (120, 150),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
-            cv2.imshow("Self-Collection Capture", submenu_frame)
-            cv2.waitKey(1)
-
-            print("\nSelect Attack Type:")
-            print("1. Printed Photo")
-            print("2. Screen Replay")
-            print("3. Video Replay")
-            print("4. Frozen Frame")
-            print("5. Multiple Faces")
-            choice = input("Choice (1-5): ").strip()
-            
-            sub_map = {"1": ("attack_printed", "printed", False), 
-                       "2": ("attack_screen", "screen", False), 
-                       "3": ("attack_video", "video", False), 
-                       "4": ("attack_frozen", "frozen", False), 
-                       "5": ("attack_multiple", "multiple", True)}
-            if choice in sub_map:
-                prefix, sub_cat, is_mult = sub_map[choice]
-                msg, color = save_captured_image("attacks", prefix, sub_cat, is_multiple_attack=is_mult)
-                feedback_text = msg
-                feedback_color = color
-            else:
-                print("[WARN] Invalid option selected.")
-                feedback_text = "[WARN] Invalid selection"
-                feedback_color = (0, 0, 255)
-
-            feedback_expiry = time.time() + 2.0
-            in_submenu = False
+            active_menu = "attacks"
 
     # Cleanup webcam and window
     cap.release()
@@ -381,25 +391,19 @@ def main():
     }
 
     try:
-        # Load existing summary file if any to update
         all_summaries = {}
         if os.path.exists(summary_path):
             with open(summary_path, "r") as jsonfile:
                 try:
                     all_summaries = json.load(jsonfile)
-                    # If it is formatted as a single session dict, migrate it
                     if "session" in all_summaries:
                         prev_session = all_summaries["session"]
                         all_summaries = {str(prev_session): all_summaries}
                 except Exception:
                     pass
 
-        # Write/Update the current session summary in a keyed map
         all_summaries[str(session)] = summary_data
         
-        # Save both as a list of session structures, or map, or just output current
-        # For simplicity and compliance with the spec, we will also output the individual session summary directly
-        # and print the summary report to terminal.
         with open(summary_path, "w") as jsonfile:
             json.dump(summary_data, jsonfile, indent=2)
             
