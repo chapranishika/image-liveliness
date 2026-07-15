@@ -22,12 +22,14 @@ data/self_collected/
 *.pb
 *.onnx
 *.pth
+*.tflite
 
 # OS / editor junk
 .DS_Store
 Thumbs.db
 .vscode/
 .idea/
+scratch/
 
 # Streamlit
 .streamlit/
@@ -37,3 +39,4 @@ Thumbs.db
 
 # Logs
 *.log
+logs/
