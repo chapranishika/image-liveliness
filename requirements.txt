@@ -1,0 +1,16 @@
+opencv-python
+mediapipe
+deepface
+tensorflow
+fastapi
+uvicorn[standard]
+streamlit
+streamlit-webrtc
+scikit-learn
+matplotlib
+numpy
+pandas
+kagglehub
+pillow
+python-multipart
+scipy

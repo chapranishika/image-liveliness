@@ -1,0 +1,39 @@
+# Python
+venv/
+__pycache__/
+*.pyc
+*.pyo
+.Python
+*.egg-info/
+
+# Environment / secrets
+.env
+kaggle.json
+
+# Datasets - too large for git, and some are non-commercial-license research data
+data/celeba_spoof_sample/
+data/cfp_sample/
+data/lfw_sample/
+data/self_collected/
+
+# Model weights auto-downloaded by DeepFace/MediaPipe on first run
+.deepface/
+*.h5
+*.pb
+*.onnx
+*.pth
+
+# OS / editor junk
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Streamlit
+.streamlit/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Logs
+*.log
