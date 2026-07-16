@@ -1,1 +1,1 @@
-"""src/liveness_active.py — placeholder, fill in during implementation."""
+"""src/liveness_active.py - placeholder, fill in during implementation."""

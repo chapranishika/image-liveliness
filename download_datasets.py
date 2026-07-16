@@ -2,22 +2,22 @@
 download_datasets.py
 Downloads CelebA-Spoof and CFP dataset samples via kagglehub.
 
-IMPORTANT — read before running:
+IMPORTANT â read before running:
 The official full CelebA-Spoof mirror on Kaggle
 (attentionlayer241/celeba-spoof-for-face-antispoofing) is approximately 77GB
-across 1.1 million files. kagglehub downloads the ENTIRE dataset — there is
+across 1.1 million files. kagglehub downloads the ENTIRE dataset â there is
 no partial/selective download. Downloading 77GB just to sample 300-500
 images is not practical for this project.
 
 Two better options, in order of preference:
     1. Use a smaller, pre-curated mirror instead, e.g.
        "trainingdatapro/celeba-spoof-dataset" or "mabdullahsajid/celeba-spoofing"
-       — check their actual file count/size on kaggle.com before committing,
+       â check their actual file count/size on kaggle.com before committing,
        sizes were not confirmed at the time this script was written.
     2. If you specifically need the official full dataset's richer 43-attribute
        labels, download it once on a machine with enough disk space (77GB+
        free), then copy only your sampled subset into data/celeba_spoof_sample/
-       and delete the rest — do not keep the full 77GB in your project folder.
+       and delete the rest â do not keep the full 77GB in your project folder.
 
 CFP's Kaggle mirror (chinafax/cfpw-dataset) is small and fine to download
 in full.
@@ -37,11 +37,11 @@ import kagglehub
 import os
 import argparse
 
-# Verify these slugs and their actual sizes on kaggle.com before running —
+# Verify these slugs and their actual sizes on kaggle.com before running â
 # Kaggle mirrors occasionally get renamed, removed, or re-owned.
 CELEBA_SPOOF_SLUGS = {
-    "full": "attentionlayer241/celeba-spoof-for-face-antispoofing",   # ~77GB, 1.1M files — official, full
-    "small": "trainingdatapro/celeba-spoof-dataset",                   # smaller curated mirror — verify size first
+    "full": "attentionlayer241/celeba-spoof-for-face-antispoofing",   # ~77GB, 1.1M files â official, full
+    "small": "trainingdatapro/celeba-spoof-dataset",                   # smaller curated mirror â verify size first
 }
 CFP_SLUG = "chinafax/cfpw-dataset"  # confirmed small, safe to download in full
 
@@ -53,7 +53,7 @@ def download(dataset_slug, dest_folder, label):
     os.makedirs(dest_folder, exist_ok=True)
     print(f"Dataset available at: {path}")
     print(f"NOTE: copy or sample the specific files/folders you want into {dest_folder}")
-    print("Do not keep the full dataset inside your project folder if it is large — sample and delete.\n")
+    print("Do not keep the full dataset inside your project folder if it is large â sample and delete.\n")
     return path
 
 
@@ -66,7 +66,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     print("=" * 60)
-    print("Dataset Download — CelebA-Spoof and CFP")
+    print("Dataset Download â CelebA-Spoof and CFP")
     print("=" * 60)
 
     if not args.skip_celeba_spoof:

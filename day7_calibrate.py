@@ -30,13 +30,17 @@ EXPECTED_BAD = {"bad_quality"}
 
 def collect_images():
     rows = []
-    for category in os.listdir(DATA_DIR):
-        cat_path = os.path.join(DATA_DIR, category)
-        if not os.path.isdir(cat_path):
+    for session_name in os.listdir(DATA_DIR):
+        session_path = os.path.join(DATA_DIR, session_name)
+        if not os.path.isdir(session_path) or not session_name.startswith("session_"):
             continue
-        for fname in os.listdir(cat_path):
-            if fname.lower().endswith((".jpg", ".jpeg", ".png")):
-                rows.append((category, os.path.join(cat_path, fname)))
+        for category in os.listdir(session_path):
+            cat_path = os.path.join(session_path, category)
+            if not os.path.isdir(cat_path):
+                continue
+            for fname in os.listdir(cat_path):
+                if fname.lower().endswith((".jpg", ".jpeg", ".png")):
+                    rows.append((category, os.path.join(cat_path, fname)))
     return rows
 
 

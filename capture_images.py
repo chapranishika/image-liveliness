@@ -114,7 +114,7 @@ def main():
     }
 
     print("\n" + "="*50)
-    print(f"Self-Data Collection Module — Session {session}")
+    print(f"Self-Data Collection Module â Session {session}")
     print("="*50)
     print("Webcam feed opening. Focus the window and use these keys:")
     print("  F -> Front Face")

@@ -42,7 +42,7 @@ def check_camera(cv2):
 
 def check_deepface(img1, img2):
     from deepface import DeepFace
-    print("[INFO] Running DeepFace.verify() — this will download ArcFace weights on first run, needs internet.")
+    print("[INFO] Running DeepFace.verify() â this will download ArcFace weights on first run, needs internet.")
     result = DeepFace.verify(img1_path=img1, img2_path=img2, model_name="ArcFace", detector_backend="mediapipe")
     print("[OK] DeepFace.verify() ran successfully. Result:")
     for k, v in result.items():
@@ -68,7 +68,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     print("=" * 60)
-    print("SANITY CHECK — Day 6 Environment Setup")
+    print("SANITY CHECK â Day 6 Environment Setup")
     print("=" * 60)
 
     cv2 = check_opencv()
@@ -79,7 +79,7 @@ if __name__ == "__main__":
         check_deepface(args.img1, args.img2)
         check_deepface_antispoofing(args.img1)
     else:
-        print("\n[SKIPPED] DeepFace verify/anti-spoofing checks — "
+        print("\n[SKIPPED] DeepFace verify/anti-spoofing checks â "
               "rerun with --img1 and --img2 pointing at two of your own photos "
               "once you've captured them (see capture_images.py).")
 

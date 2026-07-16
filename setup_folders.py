@@ -46,7 +46,7 @@ def main():
     for f in FILES_TO_TOUCH:
         if not os.path.exists(f):
             with open(f, "w") as fh:
-                fh.write(f'"""{f} — placeholder, fill in during implementation."""\n')
+                fh.write(f'"""{f} â placeholder, fill in during implementation."""\n')
             print(f"created: {f}")
         else:
             print(f"already exists, skipped: {f}")
