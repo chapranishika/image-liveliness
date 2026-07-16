@@ -1,0 +1,39 @@
+category,filename,face_count,single_face_status,yaw,pitch,roll,pose_classification,pose_status,face_area_ratio,x_offset,y_offset,position_status,detection_score,occlusion_status,occlusion_reason
+attacks,attack_frozen_001.jpg,1,pass,32.1,2.2,8.7,profile_right,pass,0.068,0.086,0.006,pass,0.946,pass,
+attacks,attack_frozen_002.jpg,1,pass,17.9,-3.8,4.4,frontal,pass,0.116,0.099,0.005,pass,0.96,pass,
+attacks,attack_multiple_001.jpg,1,pass,25.6,-8.2,2.9,profile_right,pass,0.082,0.107,0.028,pass,0.959,pass,
+attacks,attack_multiple_002.jpg,3,fail,5.7,3.6,10.7,frontal,pass,0.026,0.194,0.121,fail,0.815,pass,
+attacks,attack_multiple_003.jpg,1,pass,9.4,-26.0,0.5,frontal,pass,0.071,0.103,0.071,pass,0.952,pass,
+attacks,attack_printed_001.jpg,1,pass,-33.0,4.2,-12.9,profile_left,pass,0.061,0.209,0.032,fail,0.912,pass,
+attacks,attack_video_001.jpg,1,pass,-12.0,3.8,0.3,frontal,pass,0.06,0.02,0.021,pass,0.911,fail,flat texture near: mouth_area
+attacks,attack_video_002.jpg,1,pass,-26.8,-4.1,-0.6,profile_left,pass,0.088,0.027,0.008,pass,0.918,pass,
+bad_quality,bad_angle_001.jpg,1,pass,,,,,fail,0.03,0.006,0.183,pass,0.735,fail,low detection confidence (0.73)
+bad_quality,bad_angle_002.jpg,1,pass,,,,,fail,0.029,0.055,0.211,fail,0.511,fail,low detection confidence (0.51)
+bad_quality,bad_blur_001.jpg,1,pass,-33.3,-2.5,3.8,profile_left,pass,0.092,0.03,0.065,pass,0.959,pass,
+bad_quality,bad_blur_002.jpg,1,pass,-27.0,2.1,-2.4,profile_left,pass,0.071,0.069,0.079,pass,0.944,pass,
+bad_quality,bad_blur_003.jpg,1,pass,22.9,-36.6,0.0,extreme,fail,0.115,0.142,0.09,pass,0.971,pass,
+bad_quality,bad_bright_001.jpg,1,pass,14.6,-18.4,2.3,frontal,pass,0.104,0.091,0.055,pass,0.887,pass,
+bad_quality,bad_bright_002.jpg,1,pass,16.6,-19.1,1.6,frontal,pass,0.092,0.095,0.092,pass,0.919,pass,
+bad_quality,bad_bright_003.jpg,1,pass,40.7,-15.9,2.7,profile_right,pass,0.129,0.204,0.082,fail,0.952,pass,
+bad_quality,bad_dark_001.jpg,1,pass,-15.9,-12.3,3.1,frontal,pass,0.07,0.048,0.145,pass,0.901,fail,"flat texture near: left_eye, right_eye"
+bad_quality,bad_dark_002.jpg,1,pass,-17.4,-6.8,3.6,frontal,pass,0.075,0.031,0.146,pass,0.901,pass,
+bad_quality,bad_occlusion_001.jpg,1,pass,-7.2,-3.5,2.7,frontal,pass,0.072,0.055,0.109,pass,0.896,fail,flat texture near: mouth_area
+bad_quality,bad_occlusion_002.jpg,1,pass,-19.6,-1.8,6.8,frontal,pass,0.057,0.025,0.117,pass,0.972,pass,
+front,front_001.jpg,1,pass,-18.8,-5.4,1.2,frontal,pass,0.052,0.033,0.073,pass,0.944,pass,
+front,front_002.jpg,1,pass,-23.2,-0.3,1.1,frontal,pass,0.054,0.007,0.07,pass,0.948,pass,
+front,front_003.jpg,1,pass,18.8,-5.1,0.7,frontal,pass,0.039,0.054,0.155,pass,0.958,pass,
+front,front_004.jpg,1,pass,-12.9,-13.1,2.6,frontal,pass,0.126,0.001,0.072,pass,0.948,pass,
+front,front_005.jpg,1,pass,-9.2,-12.1,2.0,frontal,pass,0.121,0.029,0.072,pass,0.956,pass,
+left,left_001.jpg,1,pass,-58.9,15.8,-13.6,profile_left,pass,0.095,0.018,0.036,pass,0.919,pass,
+left,left_002.jpg,1,pass,-58.9,16.3,-14.1,profile_left,pass,0.053,0.005,0.054,pass,0.902,pass,
+left,left_003.jpg,1,pass,-45.0,20.5,-14.0,profile_left,pass,0.055,0.017,0.04,pass,0.933,pass,
+left,left_004.jpg,1,pass,-39.9,18.4,-12.3,profile_left,pass,0.062,0.022,0.046,pass,0.953,pass,
+left,left_005.jpg,1,pass,-53.2,15.3,-11.2,profile_left,pass,0.059,0.016,0.057,pass,0.941,pass,
+left,left_006.jpg,1,pass,-32.0,13.6,-7.0,profile_left,pass,0.055,0.034,0.04,pass,0.961,pass,
+right,right_001.jpg,1,pass,63.4,42.2,43.2,extreme,fail,0.061,0.116,0.055,pass,0.942,pass,
+right,right_002.jpg,1,pass,58.9,26.3,23.4,extreme,fail,0.058,0.085,0.043,pass,0.934,pass,
+right,right_003.jpg,1,pass,47.9,19.6,16.5,profile_right,pass,0.061,0.066,0.051,pass,0.932,pass,
+right,right_004.jpg,1,pass,,,,,fail,0.054,0.115,0.059,pass,0.951,pass,
+right,right_005.jpg,1,pass,,,,,fail,0.053,0.131,0.079,pass,0.748,fail,low detection confidence (0.75)
+right,right_006.jpg,1,pass,60.8,36.9,30.6,extreme,fail,0.051,0.101,0.043,pass,0.908,pass,
+right,right_007.jpg,1,pass,57.2,26.2,19.0,profile_right,pass,0.052,0.083,0.044,pass,0.951,pass,

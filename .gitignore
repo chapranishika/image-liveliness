@@ -23,6 +23,7 @@ data/self_collected/
 *.onnx
 *.pth
 *.tflite
+*.task
 
 # OS / editor junk
 .DS_Store
