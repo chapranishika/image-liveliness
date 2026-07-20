@@ -1,0 +1,39 @@
+category,filename,expected,is_real,antispoof_score,status,reason,correct
+attacks,attack_frozen_001.jpg,spoof,False,0.7554,fail,flagged as spoof by passive liveness model,True
+attacks,attack_frozen_002.jpg,spoof,False,0.9072,fail,flagged as spoof by passive liveness model,True
+attacks,attack_multiple_001.jpg,spoof,False,0.9139,fail,flagged as spoof by passive liveness model,True
+attacks,attack_multiple_002.jpg,spoof,False,1.0,fail,flagged as spoof by passive liveness model,True
+attacks,attack_multiple_003.jpg,spoof,False,0.8622,fail,flagged as spoof by passive liveness model,True
+attacks,attack_printed_001.jpg,spoof,False,0.9655,fail,flagged as spoof by passive liveness model,True
+attacks,attack_video_001.jpg,spoof,False,0.5735,fail,flagged as spoof by passive liveness model,True
+attacks,attack_video_002.jpg,spoof,False,0.9995,fail,flagged as spoof by passive liveness model,True
+bad_quality,bad_angle_001.jpg,n/a,True,0.7075,pass,,
+bad_quality,bad_angle_002.jpg,n/a,True,0.8022,pass,,
+bad_quality,bad_blur_001.jpg,n/a,True,0.571,pass,,
+bad_quality,bad_blur_002.jpg,n/a,True,0.7653,pass,,
+bad_quality,bad_blur_003.jpg,n/a,True,0.8478,pass,,
+bad_quality,bad_bright_001.jpg,n/a,True,0.5134,pass,,
+bad_quality,bad_bright_002.jpg,n/a,True,0.8294,pass,,
+bad_quality,bad_bright_003.jpg,n/a,False,0.6015,fail,flagged as spoof by passive liveness model,
+bad_quality,bad_dark_001.jpg,n/a,True,0.9736,pass,,
+bad_quality,bad_dark_002.jpg,n/a,True,0.9887,pass,,
+bad_quality,bad_occlusion_001.jpg,n/a,True,0.4996,pass,,
+bad_quality,bad_occlusion_002.jpg,n/a,False,0.4684,fail,flagged as spoof by passive liveness model,
+front,front_001.jpg,real,True,0.5544,pass,,True
+front,front_002.jpg,real,True,0.8048,pass,,True
+front,front_003.jpg,real,True,0.5429,pass,,True
+front,front_004.jpg,real,True,0.6601,pass,,True
+front,front_005.jpg,real,True,0.689,pass,,True
+left,left_001.jpg,real,True,0.7048,pass,,True
+left,left_002.jpg,real,True,0.6586,pass,,True
+left,left_003.jpg,real,True,0.8332,pass,,True
+left,left_004.jpg,real,True,0.8586,pass,,True
+left,left_005.jpg,real,True,0.7384,pass,,True
+left,left_006.jpg,real,True,0.6708,pass,,True
+right,right_001.jpg,real,True,0.6778,pass,,True
+right,right_002.jpg,real,True,0.8031,pass,,True
+right,right_003.jpg,real,True,0.8323,pass,,True
+right,right_004.jpg,real,True,0.7896,pass,,True
+right,right_005.jpg,real,True,0.9252,pass,,True
+right,right_006.jpg,real,True,0.8576,pass,,True
+right,right_007.jpg,real,True,0.9415,pass,,True
