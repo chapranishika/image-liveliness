@@ -15,16 +15,44 @@ import cv2
 def get_embedding(frame, model_name="ArcFace", detector_backend="skip"):
     """
     Converts a face frame into a 512-dimensional ArcFace embedding.
-    detector_backend="skip" is used deliberately, same reasoning as Day 10's
-    passive liveness check: by the time a frame reaches this function, it
-    has already passed face detection during the quality stage, so a second
-    detection pass here would be redundant.
+    Uses MediaPipe Tasks API face detector to crop the face region first,
+    eliminating background noise and resolving the different-person bias.
     """
+    import mediapipe as mp
+    from src.quality_checks_day8_9 import get_detector
+
+    h, w = frame.shape[:2]
+    rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+    mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=np.ascontiguousarray(rgb))
+
+    detector = get_detector(min_confidence=0.5)
+    results = detector.detect(mp_image)
+    detector.close()
+
+    face_frame = frame
+    if results.detections:
+        bbox = results.detections[0].bounding_box
+        x = max(0, int(bbox.origin_x))
+        y = max(0, int(bbox.origin_y))
+        box_w = int(bbox.width)
+        box_h = int(bbox.height)
+
+        # Add 15% padding margin around the face
+        margin_x = int(box_w * 0.15)
+        margin_y = int(box_h * 0.15)
+
+        x1 = max(0, x - margin_x)
+        y1 = max(0, y - margin_y)
+        x2 = min(w, x + box_w + margin_x)
+        y2 = min(h, y + box_h + margin_y)
+
+        face_frame = frame[y1:y2, x1:x2]
+
     from deepface import DeepFace
 
     with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tmp:
         tmp_path = tmp.name
-    cv2.imwrite(tmp_path, frame)
+    cv2.imwrite(tmp_path, face_frame)
 
     try:
         result = DeepFace.represent(
