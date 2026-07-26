@@ -28,44 +28,29 @@ from liveness_active import run_random_active_challenge
 from face_matching import get_embedding, match_against_templates
 
 
+from src.quality_score import compute_quality_score
+
 def run_quality_stage(frame):
     """
-    Runs every Day 7-9 quality check, in the cheapest-first order, and
-    stops at the FIRST failure rather than running every remaining check.
-    This is a deliberate design choice, not just an optimization: if a
-    frame has no face at all, there is no point measuring its pose or
-    checking for occlusion — those checks would either error out or
-    return meaningless results.
+    Day 21: Runs the unified, client-configurable quality scoring engine.
+    Rather than hard-cutoffs, it delegates to compute_quality_score()
+    to get a composite 0-100 score and returns pass/fail based on that.
     """
-    checks_in_order = [
-        check_single_face,   # cheapest, and gates everything else
-        check_brightness,
-        check_blur,
-        check_pose,
-        check_position,
-        check_occlusion,     # most expensive, runs last
-    ]
-
-    results = {}
-    for check_fn in checks_in_order:
-        result = check_fn(frame)
-        check_name = result.get("check", check_fn.__name__)
-        results[check_name] = result
-        if result["status"] == "fail":
-            return {
-                "stage": "quality",
-                "status": "fail",
-                "failed_check": check_name,
-                "reason": result.get("reason", ""),
-                "all_results": results,
-            }
-
+    score_result = compute_quality_score(frame)
+    if score_result["decision"] == "reject":
+        return {
+            "stage": "quality",
+            "status": "fail",
+            "failed_check": score_result.get("reason", "score below threshold"),
+            "reason": score_result.get("reason", ""),
+            "all_results": score_result,
+        }
     return {
         "stage": "quality",
         "status": "pass",
         "failed_check": None,
         "reason": "",
-        "all_results": results,
+        "all_results": score_result,
     }
 
 
