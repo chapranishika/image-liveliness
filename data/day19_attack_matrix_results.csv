@@ -1,0 +1,6 @@
+filename,attack_type,expected,actual,caught_at_stage,reason
+frozen_001.jpg,Frozen Frame Attack,rejected,rejected,quality,blur
+multiple_001.jpg,Multiple Face Attack,rejected,rejected,quality,single_face
+printed_001.jpg,Photograph Attack,rejected,rejected,quality,blur
+screen_001.jpg,Screen Replay Attack,rejected,rejected,quality,brightness
+video_001.jpg,Video Replay Attack,rejected,rejected,quality,blur
