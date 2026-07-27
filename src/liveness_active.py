@@ -202,14 +202,17 @@ def run_head_turn_challenge(direction="left", camera_index=0, timeout_seconds=8)
     }
 
 
-def run_random_active_challenge(camera_index=0):
+def run_random_active_challenge(camera_index=0, preferred_challenge=None):
     """
-    Picks one challenge at random (blink, turn left, turn right) and runs it.
-    This randomness is the actual security value of active liveness: a
-    pre-recorded video of "blinking" doesn't help an attacker if the system
-    asks for a head-turn instead, and vice versa.
+    Picks one challenge at random (blink, turn left, turn right) and runs it,
+    or respects the preferred_challenge if provided (for accessibility compliance,
+    e.g., for users with head movement or blinking limitations).
     """
-    challenge = random.choice(["blink", "turn_left", "turn_right"])
+    if preferred_challenge in ["blink", "turn_left", "turn_right"]:
+        challenge = preferred_challenge
+    else:
+        challenge = random.choice(["blink", "turn_left", "turn_right"])
+
     if challenge == "blink":
         return run_blink_challenge(camera_index)
     elif challenge == "turn_left":

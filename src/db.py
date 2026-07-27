@@ -1,46 +1,31 @@
 """
-src/db.py
+src/db.py  (Phase 8 revision: Days 27-28)
 
-Day 16: SQLite storage layer implementing the schema from the Approach &
-Design Document (Part 0.4.1): three tables — users, templates (up to three
-per user: front/left/right), and verification_logs.
-
-This is the first day anything in this project is actually PERSISTED.
-Every previous day's functions took an image in and returned a result out,
-with nothing remembered between calls. Registration cannot work that way —
-a template captured today must still exist tomorrow when someone tries to
-verify against it.
-
-Usage:
-    from src.db import init_db, insert_user, insert_template, get_templates_for_user, get_all_front_templates
-
-    init_db()
-    user_id = insert_user("Alice")
-    insert_template(user_id, "front", embedding_front)
-    insert_template(user_id, "left", embedding_left)
-    insert_template(user_id, "right", embedding_right)
+Adds, on top of Day 16's original schema:
+  - Encryption at rest for every stored embedding (Day 27)
+  - A consent_given_at column and consent-gated registration (Day 28)
+  - delete_user() implementing the right-to-deletion requirement (Day 28)
+  - A basic access_log table, separate from verification_logs, recording
+    WHO queried the system and WHEN (Day 28)
 """
 import sqlite3
 import numpy as np
 import os
 from datetime import datetime
 
-DB_PATH = os.path.join("data", "face_verification.db")
+from src.encryption import encrypt_bytes, decrypt_bytes
+
+DB_PATH = os.environ.get("FACE_DB_PATH", os.path.join("data", "face_verification.db"))
 
 
 def _get_connection():
     os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
     conn = sqlite3.connect(DB_PATH)
-    conn.execute("PRAGMA foreign_keys = ON")  # SQLite disables this by default
+    conn.execute("PRAGMA foreign_keys = ON")
     return conn
 
 
 def init_db():
-    """
-    Creates all three tables if they do not already exist. Safe to call
-    every time the application starts — CREATE TABLE IF NOT EXISTS never
-    destroys existing data.
-    """
     conn = _get_connection()
     cur = conn.cursor()
 
@@ -48,7 +33,9 @@ def init_db():
         CREATE TABLE IF NOT EXISTS users (
             user_id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL,
-            created_at TEXT NOT NULL
+            created_at TEXT NOT NULL,
+            consent_given_at TEXT,
+            deleted_at TEXT
         )
     """)
 
@@ -76,46 +63,64 @@ def init_db():
         )
     """)
 
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS access_log (
+            access_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            actor TEXT NOT NULL,
+            action TEXT NOT NULL,
+            target_user_id INTEGER,
+            timestamp TEXT NOT NULL
+        )
+    """)
+
     conn.commit()
     conn.close()
 
 
-def insert_user(name):
-    """Creates a new identity row and returns its auto-generated user_id."""
+def _log_access(actor, action, target_user_id=None):
     conn = _get_connection()
     cur = conn.cursor()
     cur.execute(
-        "INSERT INTO users (name, created_at) VALUES (?, ?)",
-        (name, datetime.now().isoformat()),
+        "INSERT INTO access_log (actor, action, target_user_id, timestamp) VALUES (?, ?, ?, ?)",
+        (actor, action, target_user_id, datetime.now().isoformat()),
+    )
+    conn.commit()
+    conn.close()
+
+
+def insert_user(name, consent_given=False, actor="system"):
+    if not consent_given:
+        raise ValueError(
+            "Cannot register a user without explicit consent. "
+            "Biometric data processing requires documented consent under "
+            "most applicable regulations (GDPR, BIPA, similar)."
+        )
+
+    conn = _get_connection()
+    cur = conn.cursor()
+    now = datetime.now().isoformat()
+    cur.execute(
+        "INSERT INTO users (name, created_at, consent_given_at, deleted_at) VALUES (?, ?, ?, NULL)",
+        (name, now, now),
     )
     user_id = cur.lastrowid
     conn.commit()
     conn.close()
+    _log_access(actor, "register", user_id)
     return user_id
 
 
 def _embedding_to_blob(embedding):
-    """
-    SQLite has no native array type, so a NumPy embedding (a 512-number
-    array) is serialized to raw bytes for storage, and deserialized back
-    to a NumPy array on read. tobytes()/frombuffer() round-trips exactly,
-    with no precision loss, unlike converting to a string representation.
-    """
-    return np.asarray(embedding, dtype=np.float64).tobytes()
+    raw = np.asarray(embedding, dtype=np.float64).tobytes()
+    return encrypt_bytes(raw)
 
 
 def _blob_to_embedding(blob):
-    return np.frombuffer(blob, dtype=np.float64)
+    raw = decrypt_bytes(blob)
+    return np.frombuffer(raw, dtype=np.float64)
 
 
 def insert_template(user_id, angle_type, embedding):
-    """
-    Stores one embedding (front, left, or right) for a given user. A user
-    should end up with exactly three rows here, one per angle — this
-    function does not enforce that count itself; registration logic
-    (Day 16's register() function) is responsible for calling this exactly
-    three times per successful registration.
-    """
     conn = _get_connection()
     cur = conn.cursor()
     cur.execute(
@@ -126,12 +131,7 @@ def insert_template(user_id, angle_type, embedding):
     conn.close()
 
 
-def get_templates_for_user(user_id):
-    """
-    Returns a dict like {"front": embedding, "left": embedding, "right": embedding}
-    for one user — exactly the shape match_against_templates() (Day 15,
-    src/face_matching.py) expects as input.
-    """
+def get_templates_for_user(user_id, actor="system"):
     conn = _get_connection()
     cur = conn.cursor()
     cur.execute(
@@ -139,33 +139,26 @@ def get_templates_for_user(user_id):
     )
     rows = cur.fetchall()
     conn.close()
+    _log_access(actor, "read_templates", user_id)
     return {angle: _blob_to_embedding(blob) for angle, blob in rows}
 
 
-def get_all_front_templates():
-    """
-    Returns every registered user's FRONT template only, as a list of
-    (user_id, name, embedding) tuples. Used exclusively by duplicate
-    detection (Day 17-18) — comparing against every angle for every user
-    would triple the comparison cost for no real benefit, since the front
-    template alone is distinctive enough to catch an already-registered
-    identity (Approach & Design Document, Part 0.1).
-    """
+def get_all_front_templates(actor="system"):
     conn = _get_connection()
     cur = conn.cursor()
     cur.execute("""
         SELECT u.user_id, u.name, t.embedding
         FROM templates t
         JOIN users u ON t.user_id = u.user_id
-        WHERE t.angle_type = 'front'
+        WHERE t.angle_type = 'front' AND u.deleted_at IS NULL
     """)
     rows = cur.fetchall()
     conn.close()
+    _log_access(actor, "read_all_front_templates")
     return [(user_id, name, _blob_to_embedding(blob)) for user_id, name, blob in rows]
 
 
 def log_verification(user_id, quality_result, liveness_result, match_score, decision):
-    """Records one verification attempt for later evaluation reporting (Day 25)."""
     conn = _get_connection()
     cur = conn.cursor()
     cur.execute(
@@ -176,3 +169,24 @@ def log_verification(user_id, quality_result, liveness_result, match_score, deci
     )
     conn.commit()
     conn.close()
+
+
+def delete_user(user_id, hard_delete=False, actor="system"):
+    conn = _get_connection()
+    cur = conn.cursor()
+
+    if hard_delete:
+        cur.execute("DELETE FROM templates WHERE user_id = ?", (user_id,))
+        cur.execute("DELETE FROM users WHERE user_id = ?", (user_id,))
+        action = "hard_delete"
+    else:
+        cur.execute(
+            "UPDATE users SET deleted_at = ? WHERE user_id = ?",
+            (datetime.now().isoformat(), user_id),
+        )
+        action = "soft_delete"
+
+    conn.commit()
+    conn.close()
+    _log_access(actor, action, user_id)
+    return {"status": "deleted", "user_id": user_id, "mode": "hard" if hard_delete else "soft"}

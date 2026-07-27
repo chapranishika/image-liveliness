@@ -54,13 +54,12 @@ def run_quality_stage(frame):
     }
 
 
-def run_liveness_stage(frame, run_active_challenge=True):
+def run_liveness_stage(frame, run_active_challenge=True, preferred_challenge=None):
     """
     Runs passive liveness (Day 10) always, and active liveness (Day 11)
     only if requested — active liveness needs a live webcam session, not
     just a single static frame, so it is optional here to allow this
-    pipeline to also run against static test images (e.g. the Day 7-10
-    calibration datasets) without requiring a webcam.
+    pipeline to also run against static test images.
     """
     passive_result = check_passive_liveness(frame)
     if passive_result["status"] == "fail":
@@ -75,7 +74,7 @@ def run_liveness_stage(frame, run_active_challenge=True):
 
     active_result = None
     if run_active_challenge:
-        active_result = run_random_active_challenge()
+        active_result = run_random_active_challenge(preferred_challenge=preferred_challenge)
         if active_result["status"] != "pass":
             return {
                 "stage": "liveness",
@@ -96,7 +95,7 @@ def run_liveness_stage(frame, run_active_challenge=True):
     }
 
 
-def run_quality_and_liveness_stage(frame, run_active_challenge=True):
+def run_quality_and_liveness_stage(frame, run_active_challenge=True, preferred_challenge=None):
     """
     The single entry point Day 14 delivers: runs quality first, and only
     proceeds to liveness if quality passed. This mirrors Diagram 1 exactly —
@@ -113,7 +112,7 @@ def run_quality_and_liveness_stage(frame, run_active_challenge=True):
             "detail": quality_result,
         }
 
-    liveness_result = run_liveness_stage(frame, run_active_challenge=run_active_challenge)
+    liveness_result = run_liveness_stage(frame, run_active_challenge=run_active_challenge, preferred_challenge=preferred_challenge)
     if liveness_result["status"] == "fail":
         return {
             "overall_status": "reject",
@@ -129,7 +128,7 @@ def run_quality_and_liveness_stage(frame, run_active_challenge=True):
     }
 
 
-def verify(frame, stored_templates, run_active_challenge=True, match_threshold=0.68):
+def verify(frame, stored_templates, run_active_challenge=True, match_threshold=0.68, preferred_challenge=None):
     """
     Day 15: The complete pipeline, matching Diagram 1 end to end.
 
@@ -145,7 +144,9 @@ def verify(frame, stored_templates, run_active_challenge=True, match_threshold=0
     work runs together in one call: Day 7-9 quality, Day 10 passive liveness,
     Day 11 active liveness, and Day 15's new matching step.
     """
-    stage_result = run_quality_and_liveness_stage(frame, run_active_challenge=run_active_challenge)
+    stage_result = run_quality_and_liveness_stage(
+        frame, run_active_challenge=run_active_challenge, preferred_challenge=preferred_challenge
+    )
     if stage_result["overall_status"] == "reject":
         return {
             "verified": False,
