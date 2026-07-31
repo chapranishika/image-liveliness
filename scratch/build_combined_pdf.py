@@ -770,8 +770,39 @@ def build_pdf():
     story.append(Paragraph(d21_roc, body_style))
     story.append(PageBreak())
 
-    # ------------------ PAGE 16: PHASE 8 INDUSTRY HARDENING ------------------
-    story.append(Paragraph("15. Phase 8 — Industry Hardening, Compliance, and Accessibility", h1_style))
+    # ------------------ PAGE 16: DAY 22-23 STREAMLIT UI ------------------
+    story.append(Paragraph("15. Day 22-23 — Streamlit Web User Interface", h1_style))
+    
+    ui_intro = """
+    Days 22 and 23 focused on translating the backend pipeline into a production-grade Web Application 
+    interface for registration operators and authentication clients.
+    """
+    story.append(Paragraph(ui_intro, body_style))
+    
+    story.append(Paragraph("A. FrameGrabber Thread Decoupling", h2_style))
+    ui_decouple = """
+    * <b>Video Callback Decoupling:</b> Model inferences (MediaPipe cropping, pose detection, ArcFace representation, and passive 
+      liveness checks) are highly computationally expensive. Running them directly in the WebRTC <code>recv()</code> callback 
+      would cause severe video stutter and dropped frames. The <code>FrameGrabber</code> class isolates the live feed thread, 
+      simply caching the latest frame in a thread-safe lock. Heavy inference operations are run in Python only on button trigger.<br/>
+    * <b>Active Deployment Presets:</b> A sidebar configuration dropdown lets users switch between Strict (85%), Balanced (70%), 
+      and Lenient (50%) composite quality score profiles, passing the selected threshold end-to-end to all verification calls.
+    """
+    story.append(Paragraph(ui_decouple, body_style))
+    
+    story.append(Paragraph("B. Gated Registration & Identification matching", h2_style))
+    ui_matching = """
+    * <b>Multi-Angle Enrollment Gating:</b> Gated enrollment captures Frontal, Left profile, and Right profile templates. Each capture 
+      runs both quality scoring and passive liveness. Profile turns are verified using MediaPipe pose yaw angles (between 25° and 65°), 
+      setting the pose sub-score to 100% since the turn is expected.<br/>
+    * <b>Best-of-Three 1-to-N Identification:</b> Rather than validating a single claimed user, the verification tab searches the 
+      entire decrypted database for the highest-scoring candidate (identification), logging results to SQLite.
+    """
+    story.append(Paragraph(ui_matching, body_style))
+    story.append(PageBreak())
+
+    # ------------------ PAGE 17: PHASE 8 INDUSTRY HARDENING ------------------
+    story.append(Paragraph("16. Phase 8 — Industry Hardening, Compliance, and Accessibility", h1_style))
     
     phase8_intro = """
     Phase 8 (Days 27-33) focused on production-grade hardening, GDPR/BIPA legal compliance, real-time dependency 
