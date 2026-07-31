@@ -30,13 +30,13 @@ from face_matching import get_embedding, match_against_templates
 
 from src.quality_score import compute_quality_score
 
-def run_quality_stage(frame):
+def run_quality_stage(frame, profile=None):
     """
     Day 21: Runs the unified, client-configurable quality scoring engine.
     Rather than hard-cutoffs, it delegates to compute_quality_score()
     to get a composite 0-100 score and returns pass/fail based on that.
     """
-    score_result = compute_quality_score(frame)
+    score_result = compute_quality_score(frame, profile=profile)
     if score_result["decision"] == "reject":
         return {
             "stage": "quality",
@@ -95,7 +95,7 @@ def run_liveness_stage(frame, run_active_challenge=True, preferred_challenge=Non
     }
 
 
-def run_quality_and_liveness_stage(frame, run_active_challenge=True, preferred_challenge=None):
+def run_quality_and_liveness_stage(frame, run_active_challenge=True, preferred_challenge=None, profile=None):
     """
     The single entry point Day 14 delivers: runs quality first, and only
     proceeds to liveness if quality passed. This mirrors Diagram 1 exactly —
@@ -104,7 +104,7 @@ def run_quality_and_liveness_stage(frame, run_active_challenge=True, preferred_c
     at "is this frame usable and does it show a live person," matching are
     two separate, composable stages.
     """
-    quality_result = run_quality_stage(frame)
+    quality_result = run_quality_stage(frame, profile=profile)
     if quality_result["status"] == "fail":
         return {
             "overall_status": "reject",
@@ -128,7 +128,7 @@ def run_quality_and_liveness_stage(frame, run_active_challenge=True, preferred_c
     }
 
 
-def verify(frame, stored_templates, run_active_challenge=True, match_threshold=0.68, preferred_challenge=None):
+def verify(frame, stored_templates, run_active_challenge=True, match_threshold=0.68, preferred_challenge=None, profile=None):
     """
     Day 15: The complete pipeline, matching Diagram 1 end to end.
 
@@ -145,7 +145,7 @@ def verify(frame, stored_templates, run_active_challenge=True, match_threshold=0
     Day 11 active liveness, and Day 15's new matching step.
     """
     stage_result = run_quality_and_liveness_stage(
-        frame, run_active_challenge=run_active_challenge, preferred_challenge=preferred_challenge
+        frame, run_active_challenge=run_active_challenge, preferred_challenge=preferred_challenge, profile=profile
     )
     if stage_result["overall_status"] == "reject":
         return {
