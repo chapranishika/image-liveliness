@@ -1,5 +1,5 @@
 category,filename,strict_score,strict_decision,balanced_score,balanced_decision,lenient_score,lenient_decision
-left,left_001.jpg,41.8,reject,41.8,reject,41.8,reject
 front,front_001.jpg,68.6,reject,68.6,reject,68.6,accept
 front,front_002.jpg,67.0,reject,67.0,reject,67.0,accept
 right,right_001.jpg,39.6,reject,39.6,reject,39.6,reject
+left,left_001.jpg,41.8,reject,41.8,reject,41.8,reject

@@ -46,7 +46,7 @@ def setup_test_database():
         print("[ERROR] Failed to extract embeddings for registration templates.")
         sys.exit(1)
 
-    user_id = insert_user("Alice")
+    user_id = insert_user("Alice", consent_given=True)
     insert_template(user_id, "front", front_emb["embedding"])
     insert_template(user_id, "left", left_emb["embedding"])
     insert_template(user_id, "right", right_emb["embedding"])

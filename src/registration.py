@@ -167,7 +167,7 @@ def register_new_user(name, camera_index=0):
     if dup_result["is_duplicate"]:
         return {"status": "rejected", "stage": "duplicate_check", "reason": dup_result["reason"]}
 
-    user_id = insert_user(name)
+    user_id = insert_user(name, consent_given=True)
     insert_template(user_id, "front", front_embed["embedding"])
     insert_template(user_id, "left", left_embed["embedding"])
     insert_template(user_id, "right", right_embed["embedding"])

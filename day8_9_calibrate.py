@@ -28,6 +28,8 @@ def collect_images():
         if not os.path.isdir(session_path) or not session_name.startswith("session_"):
             continue
         for category in os.listdir(session_path):
+            if category.startswith("rppg") or category == "attacks":
+                continue
             cat_path = os.path.join(session_path, category)
             if not os.path.isdir(cat_path):
                 continue
