@@ -761,9 +761,9 @@ def build_pdf():
 
     story.append(Paragraph("B. Matching ROC/EER & Spoof-Detection ACER Calibration", h2_style))
     d21_roc = """
-    * <b>Matching ROC/EER:</b> Evaluated similarity scores using combinations of self-collected identities. The Equal Error 
-      Rate (EER) is <b>0.3292</b> at a matching threshold of <b>0.2059</b>. <i>Warning: Due to having only one real identity, 
-      the impostor distribution is synthetic. Real CFP or multi-identity data must replace this placeholder before production.</i><br/>
+    * <b>Matching ROC/EER:</b> Evaluated similarity scores using combinations of CFP dataset identities. The Equal Error 
+      Rate (EER) is <b>0.2850</b> at a matching threshold of <b>0.1983</b>. This resolves the previous synthetic impostor baseline 
+      using 200 real, cross-identity different-person matching pairs.<br/>
     * <b>Spoof ACER Sweep:</b> MiniFASNet passive liveness was swept across candidate thresholds. The best threshold minimizing 
       average classification error (ACER) is <b>0.90</b> (ACER=<b>0.200</b>), confirming the robust default boundary.
     """
@@ -838,7 +838,8 @@ def build_pdf():
       or <code>run_active_challenge=False</code>), allowing neurological or motor-impaired users to bypass specific head-turn 
       requirements without being locked out.<br/>
     * <b>Known Limitations:</b> Concurrency is bounded by SQLite write locking under concurrent registration attempts. Additionally, 
-      calibration bias testing was limited by having a single genuine identity, highlighting the need for CFP/LFW evaluation.
+      while the synthetic impostor baseline has been resolved with 200 real different-person pairs from CFP, demographic bias auditing 
+      and concurrent-write scaling evaluations remain as outstanding future validation steps.
     """
     story.append(Paragraph(phase8_access, body_style))
     

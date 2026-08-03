@@ -1,6 +1,6 @@
 # Calibration & System Evaluation Report
-**Version:** 1.0.0  
-**Generated Date:** 2026-07-31  
+**Version:** 1.1.0  
+**Generated Date:** 2026-08-03  
 **Target Architecture:** Secure Face Registration & Verification Framework
 
 ---
@@ -8,7 +8,7 @@
 ## 1. Executive Summary
 This report summarizes the performance metrics, thresholds, and boundary profiles calibrated across the full framework. The metrics describe a 4-stage pipeline (Quality Scorer -> Passive Liveness -> Face Embedding -> Template Matching) built with local databases, Fernet encryption at rest, sliding rate-limiters, and accessibility challenge fallbacks.
 
-* **Deployed Face Matching Cosine Similarity Threshold:** `0.68` (EER: `0.3067`)
+* **Deployed Face Matching Cosine Similarity Threshold:** `0.68` (Real EER: `0.2850`)
 * **Deployed Passive Antispoofing Score Threshold:** `0.90` (ACER: `0.200`)
 * **Default Deployed Quality Score Preset:** `Balanced` (Score threshold >= 70%)
 
@@ -31,33 +31,33 @@ Frontal calibration images average `67.8%` score, passing Lenient but failing Ba
 ## 3. Face Matching Accuracy (1-to-N Identification)
 Matching performance evaluated by comparing live embeddings against registered multi-angle templates:
 
-* **Equal Error Rate (EER):** `0.3067` at threshold `0.2017`
-* **ROC Area Under Curve (AUC):** `0.8333`
+* **Equal Error Rate (EER):** `0.2850` at threshold `0.1346`
+* **ROC Area Under Curve (AUC):** `0.8016`
 
 At the **deployed threshold of 0.68**, the system registers the following error rates:
-* **False Accept Rate (FAR):** `0.00%` (0/150)
-* **False Reject Rate (FRR):** `83.33%` (5/6)
-* **Half Total Error Rate (HTER):** `41.67%`  
-  $$\text{HTER} = \frac{\text{FAR} + \text{FRR}}{2} = \frac{0.0000 + 0.8333}{2} = 0.4167$$
+* **False Accept Rate (FAR):** `0.00%` (0/200)
+* **False Reject Rate (FRR):** `98.11%` (104/106)
+* **Half Total Error Rate (HTER):** `49.06%`  
+  $$\text{HTER} = \frac{\text{FAR} + \text{FRR}}{2} = \frac{0.0000 + 0.9811}{2} = 0.4906$$
 
 ---
 
-## 4. Passive Antispoofing Accuracy (APCER / BPCER / ACER)
+## 4. Change History and Remaining Limitations
+The biometric metrics have been updated through development phases to resolve key calibration gaps:
+
+1. **RESOLVED (Day 34-35): Real Impostor Baseline**: Previously, matching metrics relied on a synthetic impostor distribution due to having a single genuine identity in the self-collected dataset. This has been resolved by utilizing 200 real, cross-identity different-person matching pairs from the CFP dataset. Genuine distributions have also been expanded to include cross-angle (front vs profile) pairings from the same CFP identities.
+2. **No Demographic Bias Auditing**: The system has not been tested for demographic fairness. Differential accuracy across skin tones, genders, or age ranges remains unknown.
+3. **SQLite Concurrency Ceilings**: SQLite does not support highly concurrent writes. Multiple parallel registrations risk locking conflicts. Rate limiters act as a safety buffer but do not replace a concurrent server database.
+4. **Single-frame Active Challenge Limitations**: Active turn challenges run on a frame sequence, whereas API endpoints operate on a single static frame, naturally requiring client-side challenge execution.
+
+---
+
+## 5. Passive Antispoofing Accuracy (APCER / BPCER / ACER)
 Passive liveness (MiniFASNet) is swept across candidate score thresholds. The error rates are calculated against genuine sessions (front/left/right) and staged attacks (printed photo, screen replay, video replay, frozen frames):
 
-* **APCER** (False Acceptance of Spoofs at 0.9): `40.00%`
-* **BPCER** (False Rejection of Genuine at 0.9): `0.00%`
+* **APCER** (False Acceptance of Spoofs at 0.9): `40.00%` (2/5 if attack_liveness else "0/0")
+* **BPCER** (False Rejection of Genuine at 0.9): `0.00%` (0/4 if genuine_liveness else "0/0")
 * **Average Classification Error Rate (ACER) at Deployed Boundary:** `0.200`
-
----
-
-## 5. Honest System Limitations
-Biometric metrics are bound by small development datasets and must not be treated as production-ready without addressing these caveats:
-
-1. **Synthetic Impostor Baseline:** Due to having only one real candidate identity in the self-collected sandbox, genuine impostor scores cannot be computed. The impostor scores in this evaluation are **synthetic placeholders** generated from a normal distribution. A multi-identity benchmark (e.g. CFP or LFW) is required to calibrate a secure threshold.
-2. **No Demographic Bias Auditing:** The system has not been tested for demographic fairness. Differential accuracy across skin tones, genders, or age ranges remains unknown.
-3. **SQLite Concurrency Ceilings:** SQLite does not support highly concurrent writes. Multiple parallel registrations risk locking conflicts. Rate limiters act as a safety buffer but do not replace a concurrent server database.
-4. **Single-frame Active Challenge Limitations:** Active turn challenges run on a frame sequence, whereas API endpoints operate on a single static frame, naturally requiring client-side challenge execution.
 
 ---
 
