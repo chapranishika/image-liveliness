@@ -43,46 +43,161 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Custom CSS for dark-mode premium look
+# Custom CSS for premium glassmorphism and modern React-like dashboard layout
 st.markdown("""
 <style>
-    .stApp {
-        background-color: #0E1117;
-        color: #E2E8F0;
+    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap');
+    
+    /* Base Font Override */
+    html, body, [class*="css"], .stApp {
+        font-family: 'Plus Jakarta Sans', sans-serif !important;
     }
+    
+    /* Background Gradient */
+    .stApp {
+        background: radial-gradient(circle at 50% 0%, #1E1B4B 0%, #0F172A 70%, #020617 100%) !important;
+        color: #F8FAFC !important;
+    }
+    
+    /* Premium Sidebar */
+    [data-testid="stSidebar"] {
+        background-color: #030712 !important;
+        border-right: 1px solid rgba(255, 255, 255, 0.05) !important;
+    }
+    
+    /* Centered Main Header */
     .main-header {
-        font-size: 2.2rem;
-        font-weight: 700;
-        color: #F8FAFC;
-        margin-bottom: 0.2rem;
-        background: linear-gradient(135deg, #3B82F6 0%, #8B5CF6 100%);
+        font-size: 2.5rem;
+        font-weight: 800;
+        letter-spacing: -0.05em;
+        text-align: center;
+        background: linear-gradient(135deg, #60A5FA 0%, #3B82F6 50%, #8B5CF6 100%);
         -webkit-background-clip: text;
         -webkit-text-fill-color: transparent;
+        margin-bottom: 0.1rem;
     }
+    
     .sub-header {
-        font-size: 1.0rem;
+        font-size: 1.1rem;
+        font-weight: 400;
         color: #94A3B8;
-        margin-bottom: 2rem;
+        text-align: center;
+        margin-bottom: 2.5rem;
     }
+    
+    /* Glassmorphic Metric Cards */
     .metric-card {
-        background-color: #1E293B;
-        border: 1px solid #334155;
-        border-radius: 12px;
-        padding: 1rem;
-        margin-bottom: 1rem;
-        box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -1px rgba(0,0,0,0.06);
+        background: rgba(30, 41, 59, 0.4) !important;
+        backdrop-filter: blur(12px) !important;
+        border: 1px solid rgba(255, 255, 255, 0.08) !important;
+        border-radius: 16px !important;
+        padding: 1.25rem !important;
+        margin-bottom: 1.25rem !important;
+        box-shadow: 0 10px 15px -3px rgba(0,0,0,0.3) !important;
     }
+    
+    /* Animated Scanner Frame Glow */
+    .scanner-container {
+        position: relative !important;
+        border: 2px solid #3B82F6 !important;
+        border-radius: 16px !important;
+        overflow: hidden !important;
+        box-shadow: 0 0 20px rgba(59, 130, 246, 0.3) !important;
+    }
+    .scanner-container::after {
+        content: '' !important;
+        position: absolute !important;
+        width: 100% !important;
+        height: 4px !important;
+        background: linear-gradient(90deg, transparent, #60A5FA, #3B82F6, #60A5FA, transparent) !important;
+        top: 0 !important;
+        left: 0 !important;
+        animation: scanline 4s linear infinite !important;
+        z-index: 100 !important;
+        box-shadow: 0 0 8px #60A5FA !important;
+    }
+    @keyframes scanline {
+        0% { top: 0%; }
+        50% { top: 100%; }
+        100% { top: 0%; }
+    }
+    
+    /* Custom Pill Tabs Bar */
+    div[data-baseweb="tab-list"] {
+        background: rgba(15, 23, 42, 0.6) !important;
+        backdrop-filter: blur(8px) !important;
+        border-radius: 14px !important;
+        padding: 6px !important;
+        border: 1px solid rgba(255, 255, 255, 0.05) !important;
+        margin-bottom: 2rem !important;
+        display: flex !important;
+        justify-content: center !important;
+        gap: 8px !important;
+    }
+    button[data-baseweb="tab"] {
+        color: #94A3B8 !important;
+        font-weight: 600 !important;
+        padding: 10px 24px !important;
+        border-radius: 10px !important;
+        background: transparent !important;
+        border: none !important;
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+    }
+    button[data-baseweb="tab"]:hover {
+        color: #F1F5F9 !important;
+        background: rgba(255, 255, 255, 0.03) !important;
+    }
+    button[data-baseweb="tab"][aria-selected="true"] {
+        color: #FFFFFF !important;
+        background: linear-gradient(135deg, #2563EB 0%, #4F46E5 100%) !important;
+        box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3) !important;
+    }
+    
+    /* Interactive Glowing Buttons */
+    div.stButton > button {
+        background: linear-gradient(135deg, #3B82F6 0%, #2563EB 100%) !important;
+        color: #FFFFFF !important;
+        border: none !important;
+        border-radius: 10px !important;
+        padding: 12px 28px !important;
+        font-weight: 700 !important;
+        font-size: 0.95rem !important;
+        letter-spacing: -0.01em !important;
+        transition: all 0.25s ease !important;
+        box-shadow: 0 4px 10px rgba(37, 99, 235, 0.2) !important;
+        cursor: pointer !important;
+        width: 100% !important;
+    }
+    div.stButton > button:hover {
+        transform: translateY(-2px) !important;
+        box-shadow: 0 12px 20px rgba(37, 99, 235, 0.4) !important;
+        background: linear-gradient(135deg, #2563EB 0%, #1D4ED8 100%) !important;
+    }
+    div.stButton > button:active {
+        transform: translateY(0) !important;
+    }
+    
+    /* Forms & Text Fields styling */
+    div[data-baseweb="input"] {
+        background: rgba(15, 23, 42, 0.5) !important;
+        border: 1px solid rgba(255, 255, 255, 0.08) !important;
+        border-radius: 10px !important;
+        color: #F8FAFC !important;
+    }
+    
+    /* Badges */
     .badge {
         display: inline-block;
-        padding: 0.25rem 0.6rem;
+        padding: 0.3rem 0.75rem;
         font-size: 0.75rem;
-        font-weight: 600;
+        font-weight: 700;
         border-radius: 9999px;
         text-transform: uppercase;
+        letter-spacing: 0.05em;
     }
-    .badge-pass { background-color: #059669; color: #ECFDF5; }
-    .badge-warn { background-color: #D97706; color: #FEF3C7; }
-    .badge-fail { background-color: #DC2626; color: #FEF2F2; }
+    .badge-pass { background-color: #059669; color: #ECFDF5; box-shadow: 0 0 10px rgba(5, 150, 105, 0.2); }
+    .badge-warn { background-color: #D97706; color: #FEF3C7; box-shadow: 0 0 10px rgba(217, 119, 6, 0.2); }
+    .badge-fail { background-color: #DC2626; color: #FEF2F2; box-shadow: 0 0 10px rgba(220, 38, 38, 0.2); }
 </style>
 """, unsafe_allow_html=True)
 
@@ -260,6 +375,7 @@ with tab_enroll:
         grabber = st.session_state.grabber_enroll
 
         st.markdown("### 🎥 Live Video Capture Feed")
+        st.markdown('<div class="scanner-container">', unsafe_allow_html=True)
         ctx_enroll = webrtc_streamer(
             key="webrtc_enroll",
             mode=WebRtcMode.SENDRECV,
@@ -270,6 +386,7 @@ with tab_enroll:
             media_stream_constraints={"video": True, "audio": False},
             async_processing=True
         )
+        st.markdown('</div>', unsafe_allow_html=True)
 
         # Retrieve current frame from grabber
         latest_img = None
@@ -425,6 +542,7 @@ with tab_verify:
 
     with col_v_cam:
         st.markdown("### Live Verification Camera")
+        st.markdown('<div class="scanner-container">', unsafe_allow_html=True)
         grabber_v = st.session_state.grabber_verify
         ctx_verify = webrtc_streamer(
             key="webrtc_verify",
@@ -436,6 +554,7 @@ with tab_verify:
             media_stream_constraints={"video": True, "audio": False},
             async_processing=True
         )
+        st.markdown('</div>', unsafe_allow_html=True)
 
         latest_verify_img = None
         if ctx_verify.state.playing:
