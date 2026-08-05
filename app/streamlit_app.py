@@ -302,20 +302,114 @@ with col_cam:
         instructions_text = "Align your face with the guide"
         overlay_class = ""
         arrow_html = ""
+        progress_ring_svg = ""
         
-        if st.session_state.active_view == "Verify Identity":
-            if st.session_state.get("verify_face_detected", False):
-                overlay_class = "detected"
-        else:
-            # Guided Enrollment details
+        # Determine active profile settings
+        active_prof = st.session_state.get("selected_profile", "balanced")
+        
+        # Check success-flash status
+        is_flashing = False
+        if "flash_end_time" in st.session_state and st.session_state.flash_end_time is not None:
+            if time.time() < st.session_state.flash_end_time:
+                is_flashing = True
+                overlay_class = "success"
+                instructions_text = "Captured!"
+                progress_ring_svg = """
+                <path d="M75,140 L95,160 L125,120" 
+                      fill="none" 
+                      stroke="#10B981" 
+                      stroke-width="8" 
+                      stroke-linecap="round" 
+                      stroke-linejoin="round" />
+                """
+            else:
+                st.session_state.flash_end_time = None
+                
+        # Grab current frame from grabber thread safely
+        latest_img = None
+        if ctx.state.playing and not is_flashing:
+            with st.session_state.grabber.frame_lock:
+                if st.session_state.grabber.latest_frame is not None:
+                    latest_img = st.session_state.grabber.latest_frame.copy()
+                    
+        # Determine check mode loop conditions
+        run_realtime_loop = False
+        if ctx.state.playing and not is_flashing:
+            if st.session_state.active_view == "Guided Enrollment":
+                if st.session_state.get("enroll_step", 1) < 4:
+                    run_realtime_loop = True
+            elif st.session_state.active_view == "Verify Identity":
+                outcome = st.session_state.get("verify_outcome")
+                if not outcome or outcome.get("status") != "pass":
+                    run_realtime_loop = True
+                    
+        if run_realtime_loop and latest_img is not None:
+            # Match current step pose target
+            if st.session_state.active_view == "Verify Identity":
+                expected_pose = "front"
+            else:
+                step = st.session_state.get("enroll_step", 1)
+                expected_pose = "front" if step == 1 else ("left" if step == 2 else "right")
+                
+            verify_res = verify_pose_and_quality(latest_img, expected_pose, active_prof)
+            
+            if verify_res["status"] == "pass":
+                overlay_class = "success"
+                if "countdown_start" not in st.session_state or st.session_state.countdown_start is None:
+                    st.session_state.countdown_start = time.time()
+                    
+                elapsed = time.time() - st.session_state.countdown_start
+                instructions_text = f"Hold still... {max(0.0, 1.5 - elapsed):.1f}s"
+                
+                # SVG Countdown circular progress ring
+                pct = min(1.0, elapsed / 1.5)
+                dashoffset = int(534 * (1.0 - pct))
+                progress_ring_svg = f"""
+                <circle cx="100" cy="140" r="85" 
+                        fill="none" 
+                        stroke="#10B981" 
+                        stroke-width="6" 
+                        stroke-dasharray="534" 
+                        stroke-dashoffset="{dashoffset}" 
+                        stroke-linecap="round" 
+                        transform="rotate(-90 100 140)" />
+                """
+                
+                if elapsed >= 1.5:
+                    st.session_state.countdown_start = None
+                    st.session_state.flash_end_time = time.time() + 0.6
+                    st.session_state.play_sound_trigger = True
+                    
+                    if st.session_state.active_view == "Verify Identity":
+                        run_verification_logic(latest_img, active_prof)
+                    else:
+                        step = st.session_state.get("enroll_step", 1)
+                        if step == 1:
+                            st.session_state.enroll_front = latest_img.copy()
+                            st.session_state.enroll_step = 2
+                        elif step == 2:
+                            st.session_state.enroll_left = latest_img.copy()
+                            st.session_state.enroll_step = 3
+                        elif step == 3:
+                            st.session_state.enroll_right = latest_img.copy()
+                            st.session_state.enroll_step = 4
+                    st.rerun()
+            else:
+                st.session_state.countdown_start = None
+                reason = verify_res.get("reason", "")
+                if "couldn't find a face" in reason.lower() or "we couldn't find a face" in reason.lower():
+                    overlay_class = ""
+                    instructions_text = "Align your face with the guide"
+                else:
+                    overlay_class = "warning"
+                    instructions_text = reason
+                    
+        # Apply arrow cues to guide enrollment turns
+        if st.session_state.active_view == "Guided Enrollment" and not is_flashing:
             step = st.session_state.get("enroll_step", 1)
-            if step == 1:
-                instructions_text = "Look straight ahead at the camera"
-            elif step == 2:
-                instructions_text = "Slowly turn your head left until you feel a slight stretch, then hold still"
+            if step == 2:
                 arrow_html = '<div class="face-arrow face-arrow-left">←</div>'
             elif step == 3:
-                instructions_text = "Slowly turn your head right until you feel a slight stretch, then hold still"
                 arrow_html = '<div class="face-arrow face-arrow-right">→</div>'
                 
         # Play quiet success beep if triggered
