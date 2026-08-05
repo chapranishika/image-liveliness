@@ -18,11 +18,9 @@ CSS_STYLES = f"""
         color: #0F172A !important;
     }}
     
-    /* Clean Sidebar */
+    /* Hide Sidebar Completely */
     [data-testid="stSidebar"] {{
-        background-color: #FFFFFF !important;
-        border-right: 1px solid #E2E8F0 !important;
-        padding-top: 2rem !important;
+        display: none !important;
     }}
     
     /* Consumer Card Elements */
@@ -172,113 +170,39 @@ CSS_STYLES = f"""
         font-weight: 600 !important;
     }}
 
-    /* Smooth rounded tabs */
-    div[data-baseweb="tab-list"] {{
-        background: #F1F5F9 !important;
-        border-radius: 10px !important;
-        padding: 4px !important;
-        border: 1px solid #E2E8F0 !important;
-        margin-bottom: 2rem !important;
-        display: flex !important;
-        justify-content: flex-start !important;
-    }}
-    
-    button[data-baseweb="tab"] {{
-        color: #64748B !important;
-        font-size: 0.85rem !important;
-        font-weight: 600 !important;
-        padding: 10px 20px !important;
-        background: transparent !important;
-        border: none !important;
-        border-radius: 8px !important;
-        transition: all 0.2s ease !important;
-        margin-right: 4px !important;
-    }}
-    
-    button[data-baseweb="tab"]:hover {{
-        color: #0F172A !important;
-    }}
-    
-    button[data-baseweb="tab"][aria-selected="true"] {{
-        color: #0F172A !important;
-        background: #FFFFFF !important;
-        box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05) !important;
-    }}
-
-    /* Camera wrapper & absolute Face Guide overlay styling */
-    [data-testid="column"] {{
-        position: relative !important;
-    }}
-    
-    .camera-wrapper {{
+    /* Camera relative container & pseudo-element guide overlay */
+    .stWebRtcStreamer {{
         position: relative !important;
         width: 100% !important;
+        height: 340px !important;
         border-radius: 12px !important;
         overflow: hidden !important;
         border: 1px solid #E2E8F0 !important;
         background: #000000 !important;
     }}
     
-    .face-guide-overlay {{
-        position: absolute !important;
-        top: 0 !important;
-        left: 0 !important;
+    .stWebRtcStreamer video {{
         width: 100% !important;
-        height: 100% !important;
-        display: flex !important;
-        align-items: center !important;
-        justify-content: center !important;
-        pointer-events: none !important;
-        z-index: 100 !important;
+        height: 340px !important;
+        object-fit: cover !important;
+        border-radius: 12px !important;
     }}
     
-    .face-oval {{
-        width: 175px !important;
-        height: 240px !important;
-        border: 3px dashed rgba(255, 255, 255, 0.75) !important;
-        border-radius: 50% !important;
-        box-shadow: 0 0 0 9999px rgba(15, 23, 42, 0.4) !important;
-        transition: all 0.3s ease !important;
-        position: relative !important;
-    }}
-    
-    .face-oval.detected {{
-        border-style: solid !important;
-        border-color: #10B981 !important; /* Green border when face is detected */
-        box-shadow: 0 0 0 9999px rgba(15, 23, 42, 0.15) !important;
-    }}
-    
-    /* Friendly direction arrows for posture prompts */
-    .face-arrow {{
+    /* Centered dashed oval overlay directly styled on Streamlit WebRTC container */
+    .stWebRtcStreamer::after {{
+        content: "" !important;
         position: absolute !important;
-        font-size: 2.2rem !important;
-        color: {PRIMARY_COLOR} !important;
-        font-weight: 700 !important;
-        text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2) !important;
-    }}
-    
-    .face-arrow-left {{
         top: 50% !important;
-        left: -45px !important;
-        transform: translateY(-50%) !important;
-        animation: guide-pulse-left 0.8s infinite alternate !important;
-    }}
-    
-    .face-arrow-right {{
-        top: 50% !important;
-        right: -45px !important;
-        transform: translateY(-50%) !important;
-        animation: guide-pulse-right 0.8s infinite alternate !important;
-    }}
-    
-    @keyframes guide-pulse-left {{
-        from {{ transform: translateY(-50%) translateX(0); }}
-        to {{ transform: translateY(-50%) translateX(-8px); }}
-    }}
-    
-    @keyframes guide-pulse-right {{
-        from {{ transform: translateY(-50%) translateX(0); }}
-        to {{ transform: translateY(-50%) translateX(8px); }}
+        left: 50% !important;
+        transform: translate(-50%, -50%) !important;
+        width: 180px !important;
+        height: 245px !important;
+        border: 3.5px dashed rgba(255, 255, 255, 0.75) !important;
+        border-radius: 50% !important;
+        box-shadow: 0 0 0 9999px rgba(15, 23, 42, 0.45) !important;
+        pointer-events: none !important;
+        z-index: 1000 !important;
+        transition: all 0.3s ease !important;
     }}
 
     /* Friendly Round Buttons */
@@ -343,5 +267,16 @@ CSS_STYLES = f"""
     
     .step-dot.completed {{
         background: #10B981;
+    }}
+
+    /* Pulses for alignment arrows */
+    @keyframes guide-pulse-left {{
+        from {{ transform: translateY(-50%) translateX(0); }}
+        to {{ transform: translateY(-50%) translateX(-8px); }}
+    }}
+    
+    @keyframes guide-pulse-right {{
+        from {{ transform: translateY(-50%) translateX(0); }}
+        to {{ transform: translateY(-50%) translateX(8px); }}
     }}
 </style>

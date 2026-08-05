@@ -66,33 +66,11 @@ if "grabber" not in st.session_state:
 st.session_state.grabber_verify = st.session_state.grabber
 st.session_state.grabber_enroll = st.session_state.grabber
 
-# ---------------------------------------------------------
-# SIDEBAR CONFIGURATION (ADMIN ONLY)
-# ---------------------------------------------------------
-st.sidebar.markdown(f'<div style="font-size:1.15rem; font-weight:700; color:#0F172A; padding:8px 0;">{COMPANY_NAME} Settings</div>', unsafe_allow_html=True)
-st.sidebar.markdown("Configure the compliance parameters below. These changes will not affect the customer experience.")
+# Initialize configuration parameters
+if "selected_profile" not in st.session_state:
+    st.session_state.selected_profile = "balanced"
 
-# Active users count
-active_users_count = 0
-try:
-    conn = sqlite3.connect(db.DB_PATH)
-    cur = conn.cursor()
-    cur.execute("SELECT COUNT(*) FROM users WHERE deleted_at IS NULL")
-    active_users_count = cur.fetchone()[0]
-    conn.close()
-except Exception:
-    pass
-
-st.sidebar.metric("Registered Users", active_users_count)
-
-st.sidebar.markdown('<div style="font-size:0.85rem; font-weight:600; color:#475569; margin-top:1.5rem; margin-bottom:0.5rem;">Security Quality Level</div>', unsafe_allow_html=True)
-selected_profile = st.sidebar.radio(
-    "Quality Level Selection",
-    options=["lenient", "balanced", "strict"],
-    format_func=lambda x: x.capitalize(),
-    index=1,
-    label_visibility="collapsed"
-)
+selected_profile = st.session_state.selected_profile
 os.environ["QUALITY_PROFILE"] = selected_profile
 
 matching_threshold = 0.68
@@ -266,41 +244,82 @@ with col_cam:
         async_processing=True
     )
     
-    # Determine the face alignment overlay style based on current action & step
-    overlay_class = ""
-    arrow_html = ""
+    # Determine target state for dynamic CSS guide styling
     instructions_text = "Align your face with the guide"
+    guide_detected = False
     
     if st.session_state.active_view == "Verify Identity":
         if st.session_state.get("verify_face_detected", False):
-            overlay_class = "detected"
+            guide_detected = True
     else:
         # Guided Enrollment details
         step = st.session_state.get("enroll_step", 1)
         if step == 1:
             instructions_text = "Look straight ahead at the camera"
             if st.session_state.get("enroll_face_detected_front", False):
-                overlay_class = "detected"
+                guide_detected = True
         elif step == 2:
             instructions_text = "Slowly turn your head left until you feel a slight stretch, then hold still"
-            arrow_html = '<div class="face-arrow face-arrow-left">←</div>'
             if st.session_state.get("enroll_face_detected_left", False):
-                overlay_class = "detected"
+                guide_detected = True
         elif step == 3:
             instructions_text = "Slowly turn your head right until you feel a slight stretch, then hold still"
-            arrow_html = '<div class="face-arrow face-arrow-right">→</div>'
             if st.session_state.get("enroll_face_detected_right", False):
-                overlay_class = "detected"
+                guide_detected = True
                 
-    # Render absolute positioning HTML/CSS overlay
+    # 2. Render dynamic guides on active camera stream
     if ctx.state.playing:
-        st.markdown(f"""
-        <div class="face-guide-overlay">
-            <div class="face-oval {overlay_class}">
-                {arrow_html}
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
+        if guide_detected:
+            st.markdown("""
+            <style>
+                .stWebRtcStreamer::after {
+                    border-style: solid !important;
+                    border-color: #10B981 !important; /* Green */
+                    box-shadow: 0 0 0 9999px rgba(15, 23, 42, 0.15) !important;
+                }
+            </style>
+            """, unsafe_allow_html=True)
+            
+        if st.session_state.active_view == "Guided Enrollment":
+            step = st.session_state.get("enroll_step", 1)
+            if step == 2:
+                st.markdown("""
+                <style>
+                    .stWebRtcStreamer::before {
+                        content: "←" !important;
+                        position: absolute !important;
+                        top: 50% !important;
+                        left: 20px !important;
+                        transform: translateY(-50%) !important;
+                        font-size: 3.5rem !important;
+                        color: #3b82f6 !important;
+                        font-weight: 700 !important;
+                        z-index: 1001 !important;
+                        text-shadow: 0 2px 4px rgba(0, 0, 0, 0.4) !important;
+                        animation: guide-pulse-left 0.8s infinite alternate !important;
+                        pointer-events: none !important;
+                    }
+                </style>
+                """, unsafe_allow_html=True)
+            elif step == 3:
+                st.markdown("""
+                <style>
+                    .stWebRtcStreamer::before {
+                        content: "→" !important;
+                        position: absolute !important;
+                        top: 50% !important;
+                        right: 20px !important;
+                        transform: translateY(-50%) !important;
+                        font-size: 3.5rem !important;
+                        color: #3b82f6 !important;
+                        font-weight: 700 !important;
+                        z-index: 1001 !important;
+                        text-shadow: 0 2px 4px rgba(0, 0, 0, 0.4) !important;
+                        animation: guide-pulse-right 0.8s infinite alternate !important;
+                        pointer-events: none !important;
+                    }
+                </style>
+                """, unsafe_allow_html=True)
         
     st.markdown('</div>', unsafe_allow_html=True) # Close camera-wrapper
     
@@ -702,6 +721,30 @@ with st.expander("🛠️ System Management & Audits (Admin/Compliance Review)",
     col_delete, col_logs = st.columns([1, 1])
 
     with col_delete:
+        # Security Quality Level Selection for Admins
+        st.markdown("#### Security Compliance Settings")
+        profile_options_desc = {
+            "lenient": "Lenient (Fast, low-light optimized)",
+            "balanced": "Balanced (Recommended standard)",
+            "strict": "Strict (High-security checks)"
+        }
+        
+        # Get active selection index
+        default_idx = ["lenient", "balanced", "strict"].index(st.session_state.selected_profile)
+        
+        new_profile = st.selectbox(
+            "System Quality Compliance Profile",
+            options=["lenient", "balanced", "strict"],
+            index=default_idx,
+            format_func=lambda x: profile_options_desc[x]
+        )
+        
+        if new_profile != st.session_state.selected_profile:
+            st.session_state.selected_profile = new_profile
+            st.rerun()
+
+        st.markdown("---")
+        
         st.markdown("#### Biometric Template Deletion (Right to be Forgotten)")
         # Load active users
         users = []
