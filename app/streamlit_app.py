@@ -157,6 +157,10 @@ def verify_pose_and_quality(frame, expected_pose, profile_name):
         
     pose_res = check_pose(frame)
     if pose_res["status"] == "fail":
+        if expected_pose == "left":
+            return {"status": "fail", "reason": "Please turn your head a little further to the left."}
+        elif expected_pose == "right":
+            return {"status": "fail", "reason": "Please turn your head a little further to the right."}
         return {"status": "fail", "reason": "Please look directly at the camera."}
 
     yaw = pose_res.get("yaw", 0.0)
