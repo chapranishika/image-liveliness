@@ -1,7 +1,7 @@
 # app/branding_config.py
-# Simple configuration constants to rebrand the biometric console without touching logic code.
+# Rebranding configuration constants for a warm, clean, consumer-grade login screen.
 
-COMPANY_NAME = "VALIS SECURITY"
-LOGO_PATH = ""  # If empty, renders a clean text logo using COMPANY_NAME
-PRIMARY_COLOR = "#06b6d4"  # Brand Accent: Cold Cyan-Teal
-ACCENT_COLOR = "#0891b2"   # Secondary Accent
+COMPANY_NAME = "SafeAccess"
+LOGO_PATH = ""  # Renders a clean text logo using COMPANY_NAME
+PRIMARY_COLOR = "#2563eb"  # Friendly soft blue (Apple/Google style)
+ACCENT_COLOR = "#3b82f6"   # Secondary blue

@@ -1,14 +1,9 @@
 """
 app/streamlit_app.py
 
-A high-fidelity Streamlit client dashboard demonstrating secure face registration,
-verification pipeline, right-to-deletion enforcer, live health audits, and compliance logs.
-Fully implements Streamlit UI Part 1 & 2 requirements, including:
-1. Thread-safe FrameGrabber with streamlit-webrtc for smooth real-time webcam feed.
-2. Separate registration captures for Front, Left, and Right faces with pose-specific quality gating.
-3. Best-match identification across all registered users (1-to-N verification).
-4. Stage-by-stage pipeline status rendering (Quality -> Liveness -> Embedding -> Matching).
-5. Sidebar Quality Profile Selector (Strict, Balanced, Lenient) passed end-to-end.
+A warm, simple, and clean consumer-grade user interface for secure face registration and verification.
+Redesigned to resemble a polished client product (like Apple Face ID or modern banking setup) with plain English,
+quiet badges, dynamic face-positioning guides, continuous camera streaming, and collapsable admin configurations.
 """
 import os
 import sys
@@ -21,7 +16,7 @@ import threading
 import time
 from PIL import Image
 import io
-from streamlit_webrtc import webrtc_streamer, WebRtcMode, RTCConfiguration
+from streamlit_webrtc import webrtc_streamer, WebRtcMode
 
 # Setup paths and ensure src is importable
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
@@ -41,14 +36,12 @@ from app.branding_config import COMPANY_NAME, LOGO_PATH, PRIMARY_COLOR
 from app.styles import CSS_STYLES
 
 st.set_page_config(
-    page_title=f"{COMPANY_NAME} Biometric Console",
-    page_icon="🛡️",
+    page_title=f"{COMPANY_NAME} Authentication",
+    page_icon="👤",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="collapsed"
 )
 st.markdown(CSS_STYLES, unsafe_allow_html=True)
-
-# CSS loaded globally from app/styles.py
 
 # ---------------------------------------------------------
 # STREAMLIT WEBRTC FRAME GRABBER
@@ -65,21 +58,21 @@ class FrameGrabber:
             self.latest_frame = img
         return frame
 
-# Initialize FrameGrabbers in session state so they persist across reruns
-if "grabber_enroll" not in st.session_state:
-    st.session_state.grabber_enroll = FrameGrabber()
-if "grabber_verify" not in st.session_state:
-    st.session_state.grabber_verify = FrameGrabber()
+# Initialize single global FrameGrabber to share camera across verify/enroll
+if "grabber" not in st.session_state:
+    st.session_state.grabber = FrameGrabber()
+
+# Alias for compatibility with any backend references
+st.session_state.grabber_verify = st.session_state.grabber
+st.session_state.grabber_enroll = st.session_state.grabber
 
 # ---------------------------------------------------------
-# SIDEBAR BRANDING & STATUS
+# SIDEBAR CONFIGURATION (ADMIN ONLY)
 # ---------------------------------------------------------
-st.sidebar.markdown(f'<div class="sidebar-brand">{COMPANY_NAME} // SECURE BIOMETRICS</div>', unsafe_allow_html=True)
-st.sidebar.markdown("---")
+st.sidebar.markdown(f'<div style="font-size:1.15rem; font-weight:700; color:#0F172A; padding:8px 0;">{COMPANY_NAME} Settings</div>', unsafe_allow_html=True)
+st.sidebar.markdown("Configure the compliance parameters below. These changes will not affect the customer experience.")
 
-st.sidebar.markdown('<div class="mono-section-title">SYSTEM MONITOR</div>', unsafe_allow_html=True)
-
-# Dynamically count registered users
+# Active users count
 active_users_count = 0
 try:
     conn = sqlite3.connect(db.DB_PATH)
@@ -90,93 +83,57 @@ try:
 except Exception:
     pass
 
-st.sidebar.markdown(f"""
-<div class="system-monitor">
-    <div class="monitor-line">
-        <span class="label">SYS_STATE</span>
-        <span class="status-value active">ONLINE</span>
-    </div>
-    <div class="monitor-line">
-        <span class="label">DEPL_MODE</span>
-        <span class="status-value active">GATEWAY_ACTIVE</span>
-    </div>
-    <div class="monitor-line">
-        <span class="label">STORAGE</span>
-        <span class="status-value active">SQLITE_ENCRYPTED</span>
-    </div>
-    <div class="monitor-line">
-        <span class="label">ACTIVE_USERS</span>
-        <span class="status-value active">{active_users_count}</span>
-    </div>
-</div>
-""", unsafe_allow_html=True)
+st.sidebar.metric("Registered Users", active_users_count)
 
-st.sidebar.markdown("---")
-st.sidebar.markdown('<div class="mono-section-title">REGULATORY COMPLIANCE</div>', unsafe_allow_html=True)
-st.sidebar.markdown("""
-<div class="compliance-badge">
-    <span class="badge-title">GDPR ENFORCED</span>
-    <span class="badge-status">CONSENT_GATED // EXP_LOGS</span>
-</div>
-<div class="compliance-badge">
-    <span class="badge-title">BIPA SECURE</span>
-    <span class="badge-status">EXPLICIT_AGREEMENT // ENCRYPTED</span>
-</div>
-""", unsafe_allow_html=True)
-
-st.sidebar.markdown("---")
-
-st.sidebar.markdown('<div class="mono-section-title">QUALITY COMPLIANCE PROFILE</div>', unsafe_allow_html=True)
-profile_options = {
-    "lenient": "Lenient // Fast, low-light optimized verification",
-    "balanced": "Balanced // Recommended for standard office lighting",
-    "strict": "Strict // High-security biometric check with strict pose requirements"
-}
+st.sidebar.markdown('<div style="font-size:0.85rem; font-weight:600; color:#475569; margin-top:1.5rem; margin-bottom:0.5rem;">Security Quality Level</div>', unsafe_allow_html=True)
 selected_profile = st.sidebar.radio(
-    "Quality Profile Selection",
+    "Quality Level Selection",
     options=["lenient", "balanced", "strict"],
+    format_func=lambda x: x.capitalize(),
     index=1,
     label_visibility="collapsed"
 )
-st.sidebar.markdown(f"<div style='font-size:0.65rem; color:#64748B; margin-top:2px; font-family:\"JetBrains Mono\", monospace;'>{profile_options[selected_profile]}</div>", unsafe_allow_html=True)
+os.environ["QUALITY_PROFILE"] = selected_profile
 
 matching_threshold = 0.68
 target_threshold = QUALITY_PROFILES[selected_profile]["threshold"]
 
-# Set environment variable dynamically for logging/DB configurations
-os.environ["QUALITY_PROFILE"] = selected_profile
 if not os.environ.get("FACE_DB_ENCRYPTION_KEY"):
     os.environ["FACE_DB_ENCRYPTION_KEY"] = "G5F1yYt4-6R6pW_nZ6t01vT1gQ15yV2uT3r4_n5m6t0="
 
-
-# Title Header (Top Brand Bar)
+# ---------------------------------------------------------
+# TITLE BAR
+# ---------------------------------------------------------
 if LOGO_PATH:
     st.image(LOGO_PATH, width=150)
 else:
     st.markdown(f"""
-    <div class="top-brand-bar">
-        <div class="brand-logo-slot">{COMPANY_NAME[0] if COMPANY_NAME else "V"}</div>
-        <div class="brand-name">{COMPANY_NAME} // SYSTEM CONSOLE</div>
-        <div class="brand-tagline">BIOMETRIC MANAGEMENT ENVIRONMENT</div>
+    <div class="header-bar">
+        <div class="header-logo">{COMPANY_NAME[0] if COMPANY_NAME else "S"}</div>
+        <div class="header-name">{COMPANY_NAME} Authentication Console</div>
+        <div style="margin-left: auto;"><span class="status-badge success">✓ Camera ready</span></div>
     </div>
     """, unsafe_allow_html=True)
 
-# Initialize session state for single-page routing
+# Initialize navigation session state
+if "active_view" not in st.session_state:
+    st.session_state.active_view = "Verify Identity"
+
 if "show_registration" not in st.session_state:
     st.session_state.show_registration = False
 
 # ---------------------------------------------------------
-# HELPERS: ERROR DIAGNOSTICS
+# HELPERS: GENTLE USER-FRIENDLY ERRORS
 # ---------------------------------------------------------
 def explain_quality_failure(failed_reason, all_results=None):
     """
-    Explains the details of frame quality check failure in a clean, minimal user-friendly style.
+    Provides plain-English, actionable troubleshooting feedback on scan rejections.
     """
     st.markdown(f"""
     <div style="margin-top: 10px; margin-bottom: 12px;">
-        <span class="status-pill danger">Quality Verification Failed</span>
-        <p style="font-size: 0.85rem; color: #f43f5e; margin-top: 6px; font-weight: 500; font-family: 'Plus Jakarta Sans', sans-serif;">
-            {failed_reason}
+        <span class="status-badge danger">Scan didn't work</span>
+        <p style="font-size: 0.9rem; color: #DC2626; margin-top: 8px; font-weight: 500;">
+            Let's adjust a few details to get a better photo:
         </p>
     </div>
     """, unsafe_allow_html=True)
@@ -187,44 +144,42 @@ def explain_quality_failure(failed_reason, all_results=None):
         
         # Check lighting
         if "brightness" in sub and sub["brightness"]["score"] < 50:
-            corrections.append("💡 **Lighting**: Please move to a better lit area (increase brightness).")
+            corrections.append("💡 **Lighting**: Please move to a brighter area or turn on more lights.")
             
         # Check centering/position
         if "position" in sub and sub["position"]["score"] < 50:
-            corrections.append("🎯 **Centering**: Please center your face in the scanner (adjust left, right, or center position).")
+            corrections.append("🎯 **Centering**: Position your face directly in the middle of the camera guide.")
             
         # Check pose/alignment
         if "pose" in sub and sub["pose"]["score"] < 50:
-            corrections.append("📐 **Alignment**: Please look directly at the camera and keep your face straight (adjust tilt/yaw).")
+            corrections.append("📐 **Alignment**: Look straight at the camera and hold still.")
             
         # Check visibility
         if "occlusion" in sub and sub["occlusion"]["score"] < 50:
-            corrections.append("🕶️ **Visibility**: Please ensure your face is fully visible (remove masks, hats, or glasses).")
+            corrections.append("🕶️ **Visibility**: Ensure your face is not covered by masks, hats, or dark glasses.")
 
         # Check blur
         if "blur" in sub and sub["blur"]["score"] < 50:
-            corrections.append("🔍 **Sharpness**: Please hold your device steady to reduce blur.")
+            corrections.append("🔍 **Sharpness**: Hold your device steady to get a clear picture.")
 
         if corrections:
             for item in corrections:
                 st.info(item)
+        else:
+            st.info("Please make sure you are looking directly at the camera in good lighting.")
 
-# ---------------------------------------------------------
-# HELPER: POSE-SPECIFIC QUALITY SCORER FOR REGISTRATION
-# ---------------------------------------------------------
 def verify_pose_and_quality(frame, expected_pose, profile_name):
     """
-    Checks face presence, liveness, and pose classification.
-    Allows left/right captures to pass by treating the pose check score as 100
-    if it matches the expected angle direction (profile_left / profile_right).
+    Checks face presence, alignment, and quality.
+    Translates all raw technical thresholds/errors into user-friendly instructions.
     """
     face_check = check_single_face(frame)
     if face_check["status"] == "fail":
-        return {"status": "fail", "reason": f"Single Face Check failed: {face_check.get('reason')}"}
+        return {"status": "fail", "reason": "We couldn't find a face. Make sure you are in a well-lit area and looking at the camera."}
         
     pose_res = check_pose(frame)
     if pose_res["status"] == "fail":
-        return {"status": "fail", "reason": f"Pose Solver failed: {pose_res.get('reason')}"}
+        return {"status": "fail", "reason": "Please look directly at the camera."}
 
     yaw = pose_res.get("yaw", 0.0)
     classification = pose_res.get("classification")
@@ -232,16 +187,15 @@ def verify_pose_and_quality(frame, expected_pose, profile_name):
     # Verify expected pose yaw angles
     if expected_pose == "front":
         if classification != "frontal":
-            return {"status": "fail", "reason": f"Expected frontal pose (yaw <= 25°), got yaw {yaw:.1f}° ({classification})"}
+            return {"status": "fail", "reason": "Please look straight ahead at the camera."}
     elif expected_pose == "left":
         if classification != "profile_left":
-            return {"status": "fail", "reason": f"Expected left profile turn (yaw -25° to -65°), got yaw {yaw:.1f}° ({classification})"}
+            return {"status": "fail", "reason": "Please turn your head a little further to the left."}
     elif expected_pose == "right":
         if classification != "profile_right":
-            return {"status": "fail", "reason": f"Expected right profile turn (yaw 25° to 65°), got yaw {yaw:.1f}° ({classification})"}
+            return {"status": "fail", "reason": "Please turn your head a little further to the right."}
 
     # Run overall quality calculation
-    # For profile captures, we don't penalize the yaw (we treat pose score as 100)
     if expected_pose in ["left", "right"]:
         sub_results = {
             "brightness": score_brightness_for_profile(frame),
@@ -266,16 +220,16 @@ def verify_pose_and_quality(frame, expected_pose, profile_name):
         quality_res = compute_quality_score(frame, profile=profile_name)
 
     if quality_res["decision"] == "reject":
-        return {"status": "fail", "reason": f"Quality verification failed: {quality_res['reason']}"}
+        return {"status": "fail", "reason": "That didn't quite work — let's try again. Make sure your face is centered and fully visible."}
 
     # Run passive liveness check on captured frame
     liveness_res = check_passive_liveness(frame)
     if liveness_res["status"] == "fail":
-        return {"status": "fail", "reason": f"Passive Liveness failed: {liveness_res.get('reason', 'flagged as spoof')}"}
+        return {"status": "fail", "reason": "Biometric check failed. Please ensure you are presenting a live face."}
 
     return {"status": "pass", "quality_result": quality_res, "liveness_result": liveness_res}
 
-# Scorer subhelpers mapping raw values to subscores
+# Profile capture helper shortcuts
 def score_brightness_for_profile(frame):
     from src.quality_score import score_brightness
     return score_brightness(frame)
@@ -293,145 +247,152 @@ def score_occlusion_for_profile(frame):
     return score_occlusion(frame)
 
 # ---------------------------------------------------------
-# TAB SETUP
+# SPLIT PAGE ARCHITECTURE: PERSISTENT CAMERA + TAB ACTIONS
 # ---------------------------------------------------------
-tab_verify, tab_enroll = st.tabs(["VERIFY IDENTITY", "GUIDED ENROLLMENT"])
+col_cam, col_actions = st.columns([1.1, 0.9])
 
-with tab_verify:
-    st.markdown('<div class="reassurance-bar">Biometric authentication active. Position your face in the scanner area.</div>', unsafe_allow_html=True)
+with col_cam:
+    st.markdown('<div class="consumer-card">', unsafe_allow_html=True)
+    st.markdown('<div class="consumer-title">Camera Feed</div>', unsafe_allow_html=True)
+    st.markdown('<div class="consumer-sub">Align your face inside the dashed area below.</div>', unsafe_allow_html=True)
     
-    col_v_cam, col_v_results = st.columns([1, 1])
-
-    with col_v_cam:
-        st.markdown('<div class="dashboard-card">', unsafe_allow_html=True)
-        st.markdown('<div class="dashboard-card-title">Live Biometric Scanner</div>', unsafe_allow_html=True)
-        
-        st.markdown('<div class="scanner-container">', unsafe_allow_html=True)
-        grabber_v = st.session_state.grabber_verify
-        ctx_verify = webrtc_streamer(
-            key="webrtc_verify",
-            mode=WebRtcMode.SENDRECV,
-            video_frame_callback=grabber_v.video_frame_callback,
-            media_stream_constraints={"video": True, "audio": False},
-            async_processing=True
-        )
-        st.markdown('</div>', unsafe_allow_html=True)
-        
-        # Empty/offline state
-        if not ctx_verify.state.playing:
-            st.markdown("""
-            <div class="empty-state">
-                <div class="empty-state-icon">CAMERA_OFFLINE</div>
-                <div class="empty-state-text">BIOMETRIC FEED TERMINATED</div>
-                <div class="empty-state-sub">Activate camera scanner to initialize acquisition pipeline.</div>
+    # 1. Continuous single-camera streamer
+    st.markdown('<div class="camera-wrapper">', unsafe_allow_html=True)
+    ctx = webrtc_streamer(
+        key="shared_webrtc_camera",
+        mode=WebRtcMode.SENDRECV,
+        video_frame_callback=st.session_state.grabber.video_frame_callback,
+        media_stream_constraints={"video": True, "audio": False},
+        async_processing=True
+    )
+    
+    # Determine the face alignment overlay style based on current action & step
+    overlay_class = ""
+    arrow_html = ""
+    instructions_text = "Align your face with the guide"
+    
+    if st.session_state.active_view == "Verify Identity":
+        if st.session_state.get("verify_face_detected", False):
+            overlay_class = "detected"
+    else:
+        # Guided Enrollment details
+        step = st.session_state.get("enroll_step", 1)
+        if step == 1:
+            instructions_text = "Look straight ahead at the camera"
+            if st.session_state.get("enroll_face_detected_front", False):
+                overlay_class = "detected"
+        elif step == 2:
+            instructions_text = "Slowly turn your head left until you feel a slight stretch, then hold still"
+            arrow_html = '<div class="face-arrow face-arrow-left">←</div>'
+            if st.session_state.get("enroll_face_detected_left", False):
+                overlay_class = "detected"
+        elif step == 3:
+            instructions_text = "Slowly turn your head right until you feel a slight stretch, then hold still"
+            arrow_html = '<div class="face-arrow face-arrow-right">→</div>'
+            if st.session_state.get("enroll_face_detected_right", False):
+                overlay_class = "detected"
+                
+    # Render absolute positioning HTML/CSS overlay
+    if ctx.state.playing:
+        st.markdown(f"""
+        <div class="face-guide-overlay">
+            <div class="face-oval {overlay_class}">
+                {arrow_html}
             </div>
-            """, unsafe_allow_html=True)
-            
-        latest_verify_img = None
-        if ctx_verify.state.playing:
-            with grabber_v.frame_lock:
-                if grabber_v.latest_frame is not None:
-                    latest_verify_img = grabber_v.latest_frame.copy()
-                    
-        # Verify button inside card
-        if st.button("Verify Identity", key="verify_action_btn"):
-            if latest_verify_img is None:
-                st.error("No frame received. Please ensure the verification camera is active.")
+        </div>
+        """, unsafe_allow_html=True)
+        
+    st.markdown('</div>', unsafe_allow_html=True) # Close camera-wrapper
+    
+    if ctx.state.playing:
+        st.markdown(f"""
+        <div style="text-align: center; margin-top: 12px; font-size: 0.85rem; color: #64748B; font-weight: 500;">
+            {instructions_text}
+        </div>
+        """, unsafe_allow_html=True)
+    else:
+        st.markdown("""
+        <div class="clean-empty-state">
+            <div class="clean-empty-text">Camera offline. Please click the start button above to activate the scanner.</div>
+        </div>
+        """, unsafe_allow_html=True)
+        
+    st.markdown('</div>', unsafe_allow_html=True) # Close consumer-card
+
+# Grab current frame from grabber thread safely
+latest_img = None
+if ctx.state.playing:
+    with st.session_state.grabber.frame_lock:
+        if st.session_state.grabber.latest_frame is not None:
+            latest_img = st.session_state.grabber.latest_frame.copy()
+
+with col_actions:
+    st.markdown('<div class="consumer-card">', unsafe_allow_html=True)
+    
+    # Custom high-end segmented tab selection
+    st.markdown('<div style="margin-bottom: 1.5rem;">', unsafe_allow_html=True)
+    selected_view = st.radio(
+        "Navigation",
+        options=["Verify Identity", "Guided Enrollment"],
+        label_visibility="collapsed"
+    )
+    st.session_state.active_view = selected_view
+    st.markdown('</div>', unsafe_allow_html=True)
+    
+    # ---------------------------------------------------------
+    # TAB: VERIFY IDENTITY
+    # ---------------------------------------------------------
+    if selected_view == "Verify Identity":
+        st.markdown('<div class="consumer-title">Welcome</div>', unsafe_allow_html=True)
+        st.markdown('<div class="consumer-sub">Scan your face to quickly verify your identity.</div>', unsafe_allow_html=True)
+        
+        # Verify action triggers
+        if st.button("Start Verification", key="verify_action_btn"):
+            if latest_img is None:
+                st.error("Please turn on the camera to begin verification.")
             else:
-                st.session_state.verify_image = latest_verify_img.copy()
-                st.session_state.verify_results_data = [] # Reset results
-
-                # Define console renderer helper dynamically (no emojis, uses custom css badges/classes)
-                def render_diagnostic_console(s1_status="pending", s1_detail="", s2_status="pending", s2_detail="", s3_status="pending", s3_detail="", s4_status="pending", s4_detail=""):
-                    def get_class(status):
-                        return "passed" if status == "passed" else "failed" if status == "failed" else "running" if status == "running" else "bypassed" if status == "bypassed" else "pending"
-                    
-                    def get_prefix(status):
-                        return "[  OK  ]" if status == "passed" else "[ FAIL ]" if status == "failed" else "[ ACTIVE ]" if status == "running" else "[ BYPASS ]" if status == "bypassed" else "[ PEND ]"
-                        
-                    html = f"""
-                    <div class="diagnostic-console">
-                        <div class="console-line {get_class(s1_status)}">{get_prefix(s1_status)} STAGE_1: QUALITY_ASSESSMENT {s1_detail}</div>
-                        <div class="console-line {get_class(s2_status)}">{get_prefix(s2_status)} STAGE_2: PASSIVE_LIVENESS {s2_detail}</div>
-                        <div class="console-line {get_class(s3_status)}">{get_prefix(s3_status)} STAGE_3: ARCFACE_EMBEDDING {s3_detail}</div>
-                        <div class="console-line {get_class(s4_status)}">{get_prefix(s4_status)} STAGE_4: TEMPLATE_MATCHING {s4_detail}</div>
-                    </div>
-                    """
-                    return html
-
-                # Setup progress indicators and render live status per stage
-                status_box = st.empty()
+                st.session_state.verify_image = latest_img.copy()
                 
-                # ------------------- STAGE 1: QUALITY ASSESSMENT -------------------
-                status_box.markdown(render_diagnostic_console("running"), unsafe_allow_html=True)
-                time.sleep(0.05)
-                
-                qual_res = run_quality_stage(latest_verify_img, profile=selected_profile)
+                # Check quality & face presence
+                qual_res = run_quality_stage(latest_img, profile=selected_profile)
                 if qual_res["status"] == "fail":
-                    console_html = render_diagnostic_console(
-                        "failed", f"(Score below threshold: {qual_res['reason']})", 
-                        "bypassed", "", 
-                        "bypassed", "", 
-                        "bypassed", ""
-                    )
-                    status_box.markdown(console_html, unsafe_allow_html=True)
-                    st.session_state.verify_outcome = {"status": "fail", "stage": "quality", "reason": qual_res['reason'], "all_results": qual_res.get("all_results")}
-                    st.session_state.verify_boot_logs = console_html
+                    st.session_state.verify_face_detected = False
+                    st.session_state.verify_outcome = {
+                        "status": "fail",
+                        "stage": "quality",
+                        "reason": qual_res["reason"],
+                        "all_results": qual_res.get("all_results")
+                    }
+                    st.session_state.verify_boot_logs = f"Quality check failed: {qual_res['reason']}"
                 else:
+                    st.session_state.verify_face_detected = True
                     score = qual_res["all_results"]["overall_score"]
-                    status_box.markdown(render_diagnostic_console(
-                        "passed", f"(Score: {score}%)", 
-                        "running", "", 
-                        "pending", "", 
-                        "pending", ""
-                    ), unsafe_allow_html=True)
-                    time.sleep(0.05)
                     
-                    # ------------------- STAGE 2: LIVENESS DETECTION -------------------
-                    liveness_res = check_passive_liveness(latest_verify_img)
+                    # Check liveness
+                    liveness_res = check_passive_liveness(latest_img)
                     if liveness_res["status"] == "fail":
-                        console_html = render_diagnostic_console(
-                            "passed", f"(Score: {score}%)", 
-                            "failed", "(Spoof attack detected)", 
-                            "bypassed", "", 
-                            "bypassed", ""
-                        )
-                        status_box.markdown(console_html, unsafe_allow_html=True)
-                        st.session_state.verify_outcome = {"status": "fail", "stage": "liveness", "reason": "Spoof attack detected"}
-                        st.session_state.verify_boot_logs = console_html
+                        st.session_state.verify_outcome = {
+                            "status": "fail",
+                            "stage": "liveness",
+                            "reason": "Biometric check failed. Please present a live face."
+                        }
+                        st.session_state.verify_boot_logs = "Liveness check failed."
                     else:
                         prob = liveness_res.get("liveness_score", 0.99)
-                        status_box.markdown(render_diagnostic_console(
-                            "passed", f"(Score: {score}%)", 
-                            "passed", f"(Real face prob: {prob*100:.1f}%)", 
-                            "running", "", 
-                            "pending", ""
-                        ), unsafe_allow_html=True)
-                        time.sleep(0.05)
                         
-                        # ------------------- STAGE 3: FACE EMBEDDING -------------------
-                        emb_res = get_embedding(latest_verify_img)
+                        # Generate embedding
+                        emb_res = get_embedding(latest_img)
                         if emb_res["status"] != "success":
-                            console_html = render_diagnostic_console(
-                                "passed", f"(Score: {score}%)", 
-                                "passed", f"(Real face prob: {prob*100:.1f}%)", 
-                                "failed", f"({emb_res['reason']})", 
-                                "bypassed", ""
-                            )
-                            status_box.markdown(console_html, unsafe_allow_html=True)
-                            st.session_state.verify_outcome = {"status": "fail", "stage": "embedding", "reason": emb_res['reason']}
-                            st.session_state.verify_boot_logs = console_html
+                            st.session_state.verify_outcome = {
+                                "status": "fail",
+                                "stage": "embedding",
+                                "reason": "Could not map facial points cleanly. Hold still."
+                            }
+                            st.session_state.verify_boot_logs = f"Embedding error: {emb_res['reason']}"
                         else:
                             live_emb = emb_res["embedding"]
-                            status_box.markdown(render_diagnostic_console(
-                                "passed", f"(Score: {score}%)", 
-                                "passed", f"(Real face prob: {prob*100:.1f}%)", 
-                                "passed", "(512-D vector generated)", 
-                                "running", ""
-                            ), unsafe_allow_html=True)
-                            time.sleep(0.05)
                             
-                            # ------------------- STAGE 4: FACE MATCHING (1-TO-N) -------------------
+                            # Matching 1-to-N
                             try:
                                 conn = sqlite3.connect(db.DB_PATH)
                                 cur = conn.cursor()
@@ -445,15 +406,12 @@ with tab_verify:
                                 conn.close()
                                 
                                 if not rows:
-                                    console_html = render_diagnostic_console(
-                                        "passed", f"(Score: {score}%)", 
-                                        "passed", f"(Real face prob: {prob*100:.1f}%)", 
-                                        "passed", "(512-D vector generated)", 
-                                        "failed", "(No active users registered)"
-                                    )
-                                    status_box.markdown(console_html, unsafe_allow_html=True)
-                                    st.session_state.verify_outcome = {"status": "fail", "stage": "matching", "reason": "No registered users"}
-                                    st.session_state.verify_boot_logs = console_html
+                                    st.session_state.verify_outcome = {
+                                        "status": "fail",
+                                        "stage": "matching",
+                                        "reason": "No registered accounts found."
+                                    }
+                                    st.session_state.verify_boot_logs = "No registered users in DB."
                                 else:
                                     best_match_name = None
                                     best_score = -1.0
@@ -471,271 +429,230 @@ with tab_verify:
                                             
                                     if best_score >= matching_threshold:
                                         db.log_verification(best_user_id, qual_res, liveness_res, best_score, "accept")
-                                        console_html = render_diagnostic_console(
-                                            "passed", f"(Score: {score}%)", 
-                                            "passed", f"(Real face prob: {prob*100:.1f}%)", 
-                                            "passed", "(512-D vector generated)", 
-                                            "passed", f"(Identified: {best_match_name} @ {best_score:.4f} via {best_angle})"
-                                        )
-                                        status_box.markdown(console_html, unsafe_allow_html=True)
                                         st.session_state.verify_outcome = {
                                             "status": "pass",
                                             "name": best_match_name,
                                             "score": best_score,
                                             "angle": best_angle,
-                                            "quality_score": score
+                                            "quality_score": score,
+                                            "liveness_score": prob
                                         }
-                                        st.session_state.verify_boot_logs = console_html
+                                        st.session_state.verify_boot_logs = f"Matched user {best_match_name} (Similarity: {best_score:.4f})"
                                     else:
                                         db.log_verification(None, qual_res, liveness_res, best_score, "reject")
-                                        console_html = render_diagnostic_console(
-                                            "passed", f"(Score: {score}%)", 
-                                            "passed", f"(Real face prob: {prob*100:.1f}%)", 
-                                            "passed", "(512-D vector generated)", 
-                                            "failed", f"(Best match: {best_match_name} @ {best_score:.4f} below threshold)"
-                                        )
-                                        status_box.markdown(console_html, unsafe_allow_html=True)
                                         st.session_state.verify_outcome = {
                                             "status": "fail",
                                             "stage": "matching",
-                                            "reason": f"Access Denied: Similarity {best_score:.4f} below threshold {matching_threshold} (best match: {best_match_name})"
+                                            "reason": "No matching biometric account found.",
+                                            "score": best_score,
+                                            "best_match": best_match_name
                                         }
-                                        st.session_state.verify_boot_logs = console_html
+                                        st.session_state.verify_boot_logs = f"Failed match. Best: {best_match_name} (Score: {best_score:.4f})"
                             except Exception as e:
-                                console_html = render_diagnostic_console(
-                                    "passed", f"(Score: {score}%)", 
-                                    "passed", f"(Real face prob: {prob*100:.1f}%)", 
-                                    "passed", "(512-D vector generated)", 
-                                    "failed", f"(Database query error: {str(e)})"
-                                )
-                                status_box.markdown(console_html, unsafe_allow_html=True)
-                                st.session_state.verify_outcome = {"status": "fail", "stage": "matching", "reason": str(e)}
-                                st.session_state.verify_boot_logs = console_html
-                                
-                status_box.empty()
+                                st.session_state.verify_outcome = {
+                                    "status": "fail",
+                                    "stage": "matching",
+                                    "reason": f"Database error: {str(e)}"
+                                }
                 st.rerun()
-                                
-        st.markdown('</div>', unsafe_allow_html=True)
-
-    with col_v_results:
-        st.markdown('<div class="dashboard-card">', unsafe_allow_html=True)
-        st.markdown('<div class="dashboard-card-title">Diagnostics & System Outcome</div>', unsafe_allow_html=True)
-        
-        # Display capture image if resolved
-        if "verify_image" in st.session_state and st.session_state.verify_image is not None:
-            rgb_verify = cv2.cvtColor(st.session_state.verify_image, cv2.COLOR_BGR2RGB)
-            st.image(rgb_verify, use_container_width=True)
-            st.markdown('<div class="artifact-meta">RESOLVED // INCOMING_VERIFICATION_FRAME</div>', unsafe_allow_html=True)
-            
-        # Reassurance summary line above details
+                
+        # Verification Outcome Presentation
         if "verify_outcome" in st.session_state:
+            st.markdown("<hr style='margin: 20px 0;'>", unsafe_allow_html=True)
             outcome = st.session_state.verify_outcome
+            
+            # Show verified photo thumbnail
+            if "verify_image" in st.session_state and st.session_state.verify_image is not None:
+                rgb_v = cv2.cvtColor(st.session_state.verify_image, cv2.COLOR_BGR2RGB)
+                st.image(rgb_v, width=120)
+                st.markdown("<div style='font-size:0.8rem; color:#64748B; margin-top:4px;'>Captured photo</div>", unsafe_allow_html=True)
+                
             if outcome["status"] == "pass":
                 st.markdown(f"""
-                <span class="status-pill success">Access Granted</span>
-                <div class="reassurance-bar" style="margin-top: 10px;">
-                    Biometric match confirmed. Welcome back, <strong>{outcome['name']}</strong>.
+                <div style="margin-top:15px; margin-bottom: 10px;">
+                    <span class="status-badge success">✓ Access Granted</span>
+                </div>
+                <div style="font-size:1rem; font-weight:600; color:#059669;">
+                    Identity verified. Welcome back, {outcome['name']}!
                 </div>
                 """, unsafe_allow_html=True)
             else:
                 st.markdown(f"""
-                <span class="status-pill danger">Access Denied</span>
-                <div class="reassurance-bar" style="margin-top: 10px; border-left-color: #f43f5e; background: rgba(244, 63, 94, 0.08);">
-                    Authentication failed. {outcome['reason']}
+                <div style="margin-top:15px; margin-bottom: 10px;">
+                    <span class="status-badge danger">✗ Verification Failed</span>
+                </div>
+                <div style="font-size:0.95rem; font-weight:500; color:#DC2626;">
+                    {outcome['reason']}
                 </div>
                 """, unsafe_allow_html=True)
                 
+                # Check for troubleshooting
                 if outcome["stage"] == "quality":
                     explain_quality_failure(outcome["reason"], outcome.get("all_results"))
                 elif outcome["stage"] == "matching":
                     st.markdown("""
-                    <div class="reassurance-bar" style="border-left-color: #f59e0b; background: rgba(245, 158, 11, 0.08); margin-top: 10px;">
-                        ⚠️ <strong>Enrollment Required</strong>: Biometric signature not matched to any active user template. Please click the <strong>Guided Enrollment</strong> tab at the top of the page to register.
+                    <div style="background: #FFFBEB; border-left: 4px solid #D97706; padding: 12px 16px; border-radius: 4px; margin-top: 15px; font-size: 0.85rem; color: #92400E;">
+                        ⚠️ <strong>First time here?</strong> We couldn't find a matching biometric profile. If you have not registered your face yet, switch to the <strong>Guided Enrollment</strong> panel to create your account.
                     </div>
                     """, unsafe_allow_html=True)
-            pass
+                    
+            # Advanced Tech Details collapsable expander
+            with st.expander("🔬 Advanced details (Technical review)", expanded=False):
+                st.write(f"Pipeline Stage: {outcome.get('stage', 'complete').upper()}")
+                st.write(f"Quality Score: {outcome.get('quality_score', 'N/A')}% (Threshold: {target_threshold}%)")
+                st.write(f"Liveness Confidence: {outcome.get('liveness_score', 'N/A')}")
+                st.write(f"Match Similarity: {outcome.get('score', 'N/A')}")
+                st.write(f"Match Angle: {outcome.get('angle', 'N/A')}")
+                if "verify_boot_logs" in st.session_state:
+                    st.code(st.session_state.verify_boot_logs)
         else:
-            # Default empty state
             st.markdown("""
-            <div class="empty-state">
-                <div class="empty-state-icon">AWAITING_SCAN</div>
-                <div class="empty-state-text">NO ACTIVE BIOMETRIC SESSION</div>
-                <div class="empty-state-sub">Trigger the "Verify Identity" scan to execute stage-by-stage biometric validations.</div>
+            <div class="clean-empty-state">
+                <div class="clean-empty-text">Awaiting scan. Position your face and click "Start Verification".</div>
             </div>
             """, unsafe_allow_html=True)
-            
-        st.markdown('</div>', unsafe_allow_html=True)
 
-
-with tab_enroll:
-    st.markdown('<div class="reassurance-bar">Create a new biometric identity. Complete Frontal, Left Profile, and Right Profile facial captures.</div>', unsafe_allow_html=True)
-    
-    # Initialize enrollment step state
-    if "enroll_step" not in st.session_state:
-        st.session_state.enroll_step = 1
-        st.session_state.enroll_front = None
-        st.session_state.enroll_left = None
-        st.session_state.enroll_right = None
-
-    col_form, col_status = st.columns([1, 1])
-
-    with col_form:
-        st.markdown('<div class="dashboard-card">', unsafe_allow_html=True)
-        st.markdown('<div class="dashboard-card-title">Enrollment Scanner</div>', unsafe_allow_html=True)
+    # ---------------------------------------------------------
+    # TAB: GUIDED ENROLLMENT
+    # ---------------------------------------------------------
+    else:
+        st.markdown('<div class="consumer-title">Register Biometrics</div>', unsafe_allow_html=True)
+        st.markdown('<div class="consumer-sub">Follow a quick 3-step capture to secure your biometric profile.</div>', unsafe_allow_html=True)
         
-        # Step indicator
+        # Initialize step state
+        if "enroll_step" not in st.session_state:
+            st.session_state.enroll_step = 1
+            st.session_state.enroll_front = None
+            st.session_state.enroll_left = None
+            st.session_state.enroll_right = None
+
         step = st.session_state.enroll_step
-        active1 = "active" if step == 1 else "completed" if step > 1 else ""
-        active2 = "active" if step == 2 else "completed" if step > 2 else ""
-        active3 = "active" if step == 3 else "completed" if step > 3 else ""
+        
+        # Progress Indicator Dots & Wording
+        if step == 1:
+            step_desc = "Step 1 of 3: Look directly at the camera"
+        elif step == 2:
+            step_desc = "Step 2 of 3: Slowly turn your head to the left"
+        elif step == 3:
+            step_desc = "Step 3 of 3: Slowly turn your head to the right"
+        else:
+            step_desc = "Step 3 of 3: Captures complete"
+            
+        dot1 = "active" if step == 1 else "completed" if step > 1 else ""
+        dot2 = "active" if step == 2 else "completed" if step > 2 else ""
+        dot3 = "active" if step == 3 else "completed" if step > 3 else ""
 
         st.markdown(f"""
-        <div class="step-indicator-bar">
-            <div class="step-node {active1}">
-                <span class="step-num">01</span>
-                <span class="step-label">FRONTAL</span>
-            </div>
-            <div class="step-line"></div>
-            <div class="step-node {active2}">
-                <span class="step-num">02</span>
-                <span class="step-label">LEFT_POSE</span>
-            </div>
-            <div class="step-line"></div>
-            <div class="step-node {active3}">
-                <span class="step-num">03</span>
-                <span class="step-label">RIGHT_POSE</span>
+        <div class="step-progress-container">
+            <span class="step-progress-text">{step_desc}</span>
+            <div class="step-progress-dots">
+                <div class="step-dot {dot1}"></div>
+                <div class="step-dot {dot2}"></div>
+                <div class="step-dot {dot3}"></div>
             </div>
         </div>
         """, unsafe_allow_html=True)
 
-        reg_name = st.text_input("Full Name of Enrollee", key="enroll_name")
-        consent = st.checkbox("I explicitly consent to my biometric data being encrypted and stored for face verification.", key="enroll_consent")
+        reg_name = st.text_input("Full Name", key="enroll_name", placeholder="Enter your full name")
+        consent = st.checkbox("I agree to store my encrypted facial signature for security logins.", key="enroll_consent")
 
-        grabber = st.session_state.grabber_enroll
-        st.markdown('<div class="scanner-container">', unsafe_allow_html=True)
-        ctx_enroll = webrtc_streamer(
-            key="webrtc_enroll",
-            mode=WebRtcMode.SENDRECV,
-            video_frame_callback=grabber.video_frame_callback,
-            media_stream_constraints={"video": True, "audio": False},
-            async_processing=True
-        )
-        st.markdown('</div>', unsafe_allow_html=True)
-        
-        # Camera Offline State
-        if not ctx_enroll.state.playing:
-            st.markdown("""
-            <div class="empty-state">
-                <div class="empty-state-icon">CAMERA_OFFLINE</div>
-                <div class="empty-state-text">ENROLLMENT SCANNER STANDBY</div>
-                <div class="empty-state-sub">Activate camera stream above to initialize biometric capturing.</div>
-            </div>
-            """, unsafe_allow_html=True)
-
-        # Retrieve current frame from grabber
-        latest_img = None
-        if ctx_enroll.state.playing:
-            with grabber.frame_lock:
-                if grabber.latest_frame is not None:
-                    latest_img = grabber.latest_frame.copy()
-
-        # Step Gated Buttons
-        if st.session_state.enroll_step == 1:
-            st.markdown('<div class="reassurance-bar">Position your face looking directly into the camera.</div>', unsafe_allow_html=True)
-            if st.button("📸 Capture Frontal Face", key="capture_front_btn"):
+        # Step Gated buttons
+        if step == 1:
+            if st.button("Capture Front Photo", key="capture_front_btn"):
                 if latest_img is None:
-                    st.error("No frame received. Please ensure the webcam feed is active and playing.")
+                    st.error("Please turn on the camera first.")
                 else:
-                    with st.spinner("Analyzing frontal frame quality and liveness..."):
-                        check_res = verify_pose_and_quality(latest_img, "front", selected_profile)
-                        if check_res["status"] == "pass":
-                            st.session_state.enroll_front = latest_img.copy()
-                            st.success("Frontal capture accepted!")
-                            st.session_state.enroll_step = 2
-                            st.rerun()
-                        else:
-                            st.error(f"Capture Rejected: {check_res['reason']}")
+                    check_res = verify_pose_and_quality(latest_img, "front", selected_profile)
+                    if check_res["status"] == "pass":
+                        st.session_state.enroll_front = latest_img.copy()
+                        st.session_state.enroll_face_detected_front = True
+                        st.session_state.enroll_step = 2
+                        st.success("Front photo captured successfully!")
+                        st.rerun()
+                    else:
+                        st.session_state.enroll_face_detected_front = False
+                        st.error(check_res["reason"])
 
-        elif st.session_state.enroll_step == 2:
-            st.markdown('<div class="reassurance-bar">Turn your head slowly to the left (about 15-35 degrees).</div>', unsafe_allow_html=True)
+        elif step == 2:
             col_btns = st.columns(2)
             with col_btns[0]:
-                if st.button("◀️ Back to Step 1", key="back_to_1"):
+                if st.button("◀ Back", key="back_to_1"):
                     st.session_state.enroll_step = 1
                     st.rerun()
             with col_btns[1]:
-                if st.button("📸 Capture Left Profile", key="capture_left_btn"):
+                if st.button("Capture Left Photo", key="capture_left_btn"):
                     if latest_img is None:
-                        st.error("No frame received. Please ensure the webcam feed is active and playing.")
+                        st.error("Please turn on the camera first.")
                     else:
-                        with st.spinner("Analyzing left profile quality and liveness..."):
-                            check_res = verify_pose_and_quality(latest_img, "left", selected_profile)
-                            if check_res["status"] == "pass":
-                                st.session_state.enroll_left = latest_img.copy()
-                                st.success("Left profile capture accepted!")
-                                st.session_state.enroll_step = 3
-                                st.rerun()
-                            else:
-                                st.error(f"Capture Rejected: {check_res['reason']}")
+                        check_res = verify_pose_and_quality(latest_img, "left", selected_profile)
+                        if check_res["status"] == "pass":
+                            st.session_state.enroll_left = latest_img.copy()
+                            st.session_state.enroll_face_detected_left = True
+                            st.session_state.enroll_step = 3
+                            st.success("Left profile captured successfully!")
+                            st.rerun()
+                        else:
+                            st.session_state.enroll_face_detected_left = False
+                            st.error(check_res["reason"])
 
-        elif st.session_state.enroll_step == 3:
-            st.markdown('<div class="reassurance-bar">Turn your head slowly to the right (about 15-35 degrees).</div>', unsafe_allow_html=True)
+        elif step == 3:
             col_btns = st.columns(2)
             with col_btns[0]:
-                if st.button("◀️ Back to Step 2", key="back_to_2"):
+                if st.button("◀ Back", key="back_to_2"):
                     st.session_state.enroll_step = 2
                     st.rerun()
             with col_btns[1]:
-                if st.button("📸 Capture Right Profile", key="capture_right_btn"):
+                if st.button("Capture Right Photo", key="capture_right_btn"):
                     if latest_img is None:
-                        st.error("No frame received. Please ensure the webcam feed is active and playing.")
+                        st.error("Please turn on the camera first.")
                     else:
-                        with st.spinner("Analyzing right profile quality and liveness..."):
-                            check_res = verify_pose_and_quality(latest_img, "right", selected_profile)
-                            if check_res["status"] == "pass":
-                                st.session_state.enroll_right = latest_img.copy()
-                                st.success("Right profile capture accepted!")
-                                st.session_state.enroll_step = 4
-                                st.rerun()
-                            else:
-                                st.error(f"Capture Rejected: {check_res['reason']}")
+                        check_res = verify_pose_and_quality(latest_img, "right", selected_profile)
+                        if check_res["status"] == "pass":
+                            st.session_state.enroll_right = latest_img.copy()
+                            st.session_state.enroll_face_detected_right = True
+                            st.session_state.enroll_step = 4
+                            st.success("Right profile captured successfully!")
+                            st.rerun()
+                        else:
+                            st.session_state.enroll_face_detected_right = False
+                            st.error(check_res["reason"])
 
-        elif st.session_state.enroll_step == 4:
-            st.markdown('<div class="reassurance-bar" style="border-left-color: #10b981; background: rgba(16, 185, 129, 0.08);">All 3 templates successfully captured. Register user below.</div>', unsafe_allow_html=True)
+        elif step == 4:
+            st.markdown("<div style='background: #ECFDF5; border-left:4px solid #10B981; padding: 12px 16px; border-radius: 4px; margin-bottom:15px; font-size:0.85rem; color:#065F46;'>✓ All three photos captured successfully. Click register below to complete.</div>", unsafe_allow_html=True)
             col_btns = st.columns(2)
             with col_btns[0]:
-                if st.button("🔄 Reset enrollment", key="reset_enroll_btn"):
+                if st.button("Reset Capture", key="reset_enroll_btn"):
                     st.session_state.enroll_step = 1
                     st.session_state.enroll_front = None
                     st.session_state.enroll_left = None
                     st.session_state.enroll_right = None
                     st.rerun()
             with col_btns[1]:
-                if st.button("🚀 Register Biometric Templates", key="save_enroll_btn"):
+                if st.button("Register Face ID", key="save_enroll_btn"):
                     if not reg_name:
-                        st.error("Please enter a name for the enrollee.")
+                        st.error("Please fill in your name.")
                     elif not consent:
-                        st.error("Explicit consent must be checked to register biometric profiles.")
+                        st.error("You must agree to the storage consent checkbox.")
                     else:
-                        with st.spinner("Generating ArcFace embeddings and encrypting templates..."):
+                        with st.spinner("Encrypting secure biometric templates..."):
                             try:
                                 emb_front = get_embedding(st.session_state.enroll_front)
                                 emb_left = get_embedding(st.session_state.enroll_left)
                                 emb_right = get_embedding(st.session_state.enroll_right)
                                 
                                 if emb_front["status"] != "success":
-                                    st.error(f"Failed embedding frontal: {emb_front['reason']}")
+                                    st.error("Frontal capture could not map landmarks.")
                                 elif emb_left["status"] != "success":
-                                    st.error(f"Failed embedding left: {emb_left['reason']}")
+                                    st.error("Left capture could not map landmarks.")
                                 elif emb_right["status"] != "success":
-                                    st.error(f"Failed embedding right: {emb_right['reason']}")
+                                    st.error("Right capture could not map landmarks.")
                                 else:
-                                    user_id = db.insert_user(reg_name, consent_given=consent, actor="streamlit_ui")
+                                    user_id = db.insert_user(reg_name, consent_given=consent, actor="consumer_ui")
                                     db.insert_template(user_id, "front", emb_front["embedding"])
                                     db.insert_template(user_id, "left", emb_left["embedding"])
                                     db.insert_template(user_id, "right", emb_right["embedding"])
                                     
-                                    st.success(f"Successfully registered user '{reg_name}'!")
+                                    st.success(f"Successfully registered your profile, {reg_name}!")
                                     st.balloons()
                                     
                                     st.session_state.enroll_step = 1
@@ -744,63 +661,48 @@ with tab_enroll:
                                     st.session_state.enroll_right = None
                                     st.rerun()
                             except Exception as e:
-                                st.error(f"Error during registration: {str(e)}")
-        st.markdown('</div>', unsafe_allow_html=True)
+                                st.error(f"Save failed: {str(e)}")
 
-    with col_status:
-        st.markdown('<div class="dashboard-card">', unsafe_allow_html=True)
-        st.markdown('<div class="dashboard-card-title">Template Acquisition Artifacts</div>', unsafe_allow_html=True)
+        # Captured templates list (replaces artifacts list)
+        st.markdown("<hr style='margin: 20px 0;'>", unsafe_allow_html=True)
+        st.markdown("<div style='font-size:0.9rem; font-weight:600; color:#0F172A; margin-bottom:12px;'>Your captured photos</div>", unsafe_allow_html=True)
         col_img1, col_img2, col_img3 = st.columns(3)
         with col_img1:
             if st.session_state.enroll_front is not None:
-                rgb = cv2.cvtColor(st.session_state.enroll_front, cv2.COLOR_BGR2RGB)
-                st.image(rgb, use_container_width=True)
-                st.markdown('<div class="artifact-meta">RESOLVED // FRONT</div>', unsafe_allow_html=True)
+                rgb_f = cv2.cvtColor(st.session_state.enroll_front, cv2.COLOR_BGR2RGB)
+                st.image(rgb_f, use_container_width=True)
+                st.markdown("<div style='font-size:0.75rem; color:#059669; font-weight:600; text-align:center;'>✓ Front photo</div>", unsafe_allow_html=True)
             else:
-                st.markdown("""
-                <div class="preview-box-empty">
-                    <div class="crosshair-indicator"></div>
-                    <div class="mono-label">FRONT // EMPTY</div>
-                </div>
-                """, unsafe_allow_html=True)
+                st.markdown('<div class="clean-empty-state" style="padding:15px 5px;"><span class="clean-empty-text" style="font-size:0.75rem;">Front turn</span></div>', unsafe_allow_html=True)
         with col_img2:
             if st.session_state.enroll_left is not None:
-                rgb = cv2.cvtColor(st.session_state.enroll_left, cv2.COLOR_BGR2RGB)
-                st.image(rgb, use_container_width=True)
-                st.markdown('<div class="artifact-meta">RESOLVED // LEFT</div>', unsafe_allow_html=True)
+                rgb_l = cv2.cvtColor(st.session_state.enroll_left, cv2.COLOR_BGR2RGB)
+                st.image(rgb_l, use_container_width=True)
+                st.markdown("<div style='font-size:0.75rem; color:#059669; font-weight:600; text-align:center;'>✓ Left turn</div>", unsafe_allow_html=True)
             else:
-                st.markdown("""
-                <div class="preview-box-empty">
-                    <div class="crosshair-indicator"></div>
-                    <div class="mono-label">LEFT // EMPTY</div>
-                </div>
-                """, unsafe_allow_html=True)
+                st.markdown('<div class="clean-empty-state" style="padding:15px 5px;"><span class="clean-empty-text" style="font-size:0.75rem;">Left turn</span></div>', unsafe_allow_html=True)
         with col_img3:
             if st.session_state.enroll_right is not None:
-                rgb = cv2.cvtColor(st.session_state.enroll_right, cv2.COLOR_BGR2RGB)
-                st.image(rgb, use_container_width=True)
-                st.markdown('<div class="artifact-meta">RESOLVED // RIGHT</div>', unsafe_allow_html=True)
+                rgb_r = cv2.cvtColor(st.session_state.enroll_right, cv2.COLOR_BGR2RGB)
+                st.image(rgb_r, use_container_width=True)
+                st.markdown("<div style='font-size:0.75rem; color:#059669; font-weight:600; text-align:center;'>✓ Right turn</div>", unsafe_allow_html=True)
             else:
-                st.markdown("""
-                <div class="preview-box-empty">
-                    <div class="crosshair-indicator"></div>
-                    <div class="mono-label">RIGHT // EMPTY</div>
-                </div>
-                """, unsafe_allow_html=True)
-        st.markdown('</div>', unsafe_allow_html=True)
+                st.markdown('<div class="clean-empty-state" style="padding:15px 5px;"><span class="clean-empty-text" style="font-size:0.75rem;">Right turn</span></div>', unsafe_allow_html=True)
+                
+    st.markdown('</div>', unsafe_allow_html=True) # Close consumer-card
 
 # ---------------------------------------------------------
-# COMPLIANCE LOGS & SYSTEM HEALTH AUDIT (ADMINISTRATIVE)
+# BOTTOM EXPANDER: REGULATORY COMPLIANCE & ADMIN AUDITS
 # ---------------------------------------------------------
-st.markdown("---")
-with st.expander("[ COMPLIANCE LOGS & SYSTEM HEALTH AUDIT ]", expanded=False):
-    st.markdown("<div class='terminal-section-title'>GDPR & BIPA COMPLIANCE AUDIT CENTER</div>", unsafe_allow_html=True)
-    st.write("Review consent logs, template query audits, and execute soft/hard biometric template deletions.")
+st.markdown("<hr style='margin: 30px 0;'>", unsafe_allow_html=True)
+with st.expander("🛠️ System Management & Audits (Admin/Compliance Review)", expanded=False):
+    st.markdown("### GDPR & BIPA Compliance Console")
+    st.write("Review consent logs, template query audits, and execute biometric deletions.")
     
     col_delete, col_logs = st.columns([1, 1])
 
     with col_delete:
-        st.markdown("### Biometric Template Deletion (Right to be Forgotten)")
+        st.markdown("#### Biometric Template Deletion (Right to be Forgotten)")
         # Load active users
         users = []
         try:
@@ -815,7 +717,6 @@ with st.expander("[ COMPLIANCE LOGS & SYSTEM HEALTH AUDIT ]", expanded=False):
         if not users:
             st.info("No registered users found.")
         else:
-            # Create interactive table/selector
             df_users = pd.DataFrame(users)
             st.dataframe(df_users, use_container_width=True)
 
@@ -829,39 +730,36 @@ with st.expander("[ COMPLIANCE LOGS & SYSTEM HEALTH AUDIT ]", expanded=False):
             
             if st.button("⚠️ Execute Biometric Deletion"):
                 username = next(u["name"] for u in users if u["id"] == selected_user_id)
-                with st.spinner(f"Processing deletion request for '{username}'..."):
+                with st.spinner(f"Processing deletion request..."):
                     try:
                         is_hard = (delete_type == "Hard Delete (Permanent IRREVERSIBLE purge)")
                         db.delete_user(selected_user_id, hard_delete=is_hard, actor="streamlit_admin")
-                        st.success(f"Successfully executed {delete_type} for user '{username}'.")
+                        st.success(f"Successfully deleted user '{username}'.")
                         st.rerun()
                     except Exception as e:
                         st.error(f"Deletion failed: {str(e)}")
 
     with col_logs:
-        st.markdown("### Dynamic Security Audit Trail")
-        st.write("Live logs representing biometric template reads/writes and verification transactions.")
+        st.markdown("#### Dynamic Security Audit Trail")
+        st.write("Logs representing biometric template reads/writes and verification transactions.")
         
-        # Load access_log
         try:
             conn = sqlite3.connect(db.DB_PATH)
             df_access = pd.read_sql_query("SELECT * FROM access_log ORDER BY timestamp DESC LIMIT 15", conn)
             df_ver = pd.read_sql_query("SELECT * FROM verification_log ORDER BY timestamp DESC LIMIT 15", conn)
             conn.close()
             
-            st.markdown("#### Biometric Template Read/Write Access Log")
+            st.markdown("##### Template Read/Write Access Log")
             st.dataframe(df_access, use_container_width=True)
             
-            st.markdown("#### Biometric Verification Transactions Log")
+            st.markdown("##### Verification Transactions Log")
             st.dataframe(df_ver, use_container_width=True)
         except Exception as e:
             st.error(f"Could not load audit logs: {str(e)}")
 
     st.markdown("---")
-    st.markdown("<div class='terminal-section-title'>SYSTEM DIAGNOSTIC OVERVIEW</div>", unsafe_allow_html=True)
-    st.write("Verifies database storage integrity, encryption key validity, local model caches, and camera status.")
+    st.markdown("#### System Health Checks")
 
-    # Execute health audits
     from api.health import check_database, check_encryption_key, check_deepface_model_cache, check_camera_available
     
     db_res = check_database()
@@ -876,50 +774,15 @@ with st.expander("[ COMPLIANCE LOGS & SYSTEM HEALTH AUDIT ]", expanded=False):
     enc_msg = enc_res["detail"] if enc_res["detail"] else "Biometric encryption key loaded successfully."
     
     mod_ok = (mod_res["status"] == "pass")
-    mod_msg = mod_res["detail"] if mod_res["detail"] else "All required face detection and matching models are cached locally."
+    mod_msg = mod_res["detail"] if mod_res["detail"] else "All required face detection models are cached."
     
     cam_ok = (cam_res["status"] in ["pass", "warn"])
-    cam_msg = cam_res["detail"] if cam_res["detail"] else "Video capture device is ready for authentication tasks."
+    cam_msg = cam_res["detail"] if cam_res["detail"] else "OS Camera Capture device is ready."
 
     col_h1, col_h2 = st.columns(2)
     with col_h1:
-        st.markdown("<div class='terminal-section-title'>DATABASE STATUS</div>", unsafe_allow_html=True)
-        status_db = "PASS" if db_ok else "FAIL"
-        st.markdown(f"""
-        <div class="metric-card">
-            <h4>SQLite Storage Instance</h4>
-            <span class="badge badge-{"pass" if db_ok else "fail"}">{status_db}</span>
-            <p style='margin-top: 0.5rem;'>{db_msg}</p>
-        </div>
-        """, unsafe_allow_html=True)
-
-        st.markdown("<div class='terminal-section-title'>CRYPTOGRAPHIC MONITOR</div>", unsafe_allow_html=True)
-        status_enc = "PASS" if enc_ok else "FAIL"
-        st.markdown(f"""
-        <div class="metric-card">
-            <h4>AES-128-CBC Fernet Credentials</h4>
-            <span class="badge badge-{"pass" if enc_ok else "fail"}">{status_enc}</span>
-            <p style='margin-top: 0.5rem;'>{enc_msg}</p>
-        </div>
-        """, unsafe_allow_html=True)
-
+        st.markdown(f"**SQLite Database**: {'✓ PASS' if db_ok else '✗ FAIL'} ({db_msg})")
+        st.markdown(f"**AES-128 Encryption**: {'✓ PASS' if enc_ok else '✗ FAIL'} ({enc_msg})")
     with col_h2:
-        st.markdown("<div class='terminal-section-title'>LOCAL MODEL CACHE</div>", unsafe_allow_html=True)
-        status_mod = "PASS" if mod_ok else "FAIL"
-        st.markdown(f"""
-        <div class="metric-card">
-            <h4>DeepFace & MediaPipe Local Files</h4>
-            <span class="badge badge-{"pass" if mod_ok else "fail"}">{status_mod}</span>
-            <p style='margin-top: 0.5rem;'>{mod_msg}</p>
-        </div>
-        """, unsafe_allow_html=True)
-
-        st.markdown("<div class='terminal-section-title'>CAMERA CAPTURE PIPELINE</div>", unsafe_allow_html=True)
-        status_cam = "PASS" if cam_ok else "FAIL"
-        st.markdown(f"""
-        <div class="metric-card">
-            <h4>OS Camera Capture Pipeline</h4>
-            <span class="badge badge-{"pass" if cam_ok else "fail"}">{status_cam}</span>
-            <p style='margin-top: 0.5rem;'>{cam_msg}</p>
-        </div>
-        """, unsafe_allow_html=True)
+        st.markdown(f"**Models Cached**: {'✓ PASS' if mod_ok else '✗ FAIL'} ({mod_msg})")
+        st.markdown(f"**Camera Ready**: {'✓ PASS' if cam_ok else '✗ FAIL'} ({cam_msg})")
