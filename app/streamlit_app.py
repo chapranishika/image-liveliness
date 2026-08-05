@@ -16,7 +16,7 @@ import threading
 import time
 from PIL import Image
 import io
-from streamlit_webrtc import webrtc_streamer, WebRtcMode
+from streamlit_webrtc import webrtc_streamer, WebRtcMode, RTCConfiguration
 
 # Setup paths and ensure src is importable
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
@@ -297,7 +297,10 @@ with col_cam:
             mode=WebRtcMode.SENDRECV,
             video_frame_callback=st.session_state.grabber.video_frame_callback,
             media_stream_constraints={"video": True, "audio": False},
-            async_processing=True
+            async_processing=True,
+            rtc_configuration=RTCConfiguration(
+                {"iceServers": [{"urls": ["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302"]}]}
+            )
         )
         
         # Determine target state for dynamic guide styling
