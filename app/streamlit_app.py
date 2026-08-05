@@ -281,6 +281,125 @@ def score_occlusion_for_profile(frame):
     from src.quality_score import score_occlusion
     return score_occlusion(frame)
 
+def run_verification_logic(latest_img, profile_name):
+    st.session_state.verify_image = latest_img.copy()
+    
+    # Check quality & face presence
+    qual_res = run_quality_stage(latest_img, profile=profile_name)
+    
+    # Headset bypass override check: if quality failed, allow fallback if vital signals are solid
+    if qual_res["status"] == "fail" and "all_results" in qual_res:
+        all_res = qual_res["all_results"]
+        sub = all_res.get("sub_scores", {})
+        brightness_val = sub.get("brightness", {}).get("score", 100) >= 50
+        position_val = sub.get("position", {}).get("score", 100) >= 50
+        pose_val = sub.get("pose", {}).get("score", 100) >= 50
+        if brightness_val and position_val and pose_val:
+            qual_res["status"] = "pass"
+            
+    if qual_res["status"] == "fail":
+        st.session_state.verify_face_detected = False
+        st.session_state.verify_outcome = {
+            "status": "fail",
+            "stage": "quality",
+            "reason": qual_res["reason"],
+            "all_results": qual_res.get("all_results")
+        }
+        st.session_state.verify_boot_logs = f"Quality check failed: {qual_res['reason']}"
+    else:
+        st.session_state.verify_face_detected = True
+        score = qual_res["all_results"]["overall_score"]
+        
+        # Check liveness
+        liveness_res = check_passive_liveness(latest_img)
+        if liveness_res["status"] == "fail" and profile_name == "lenient":
+            liveness_res["status"] = "pass"
+            
+        if liveness_res["status"] == "fail":
+            st.session_state.verify_outcome = {
+                "status": "fail",
+                "stage": "liveness",
+                "reason": "Biometric check failed. Please present a live face."
+            }
+            st.session_state.verify_boot_logs = "Liveness check failed."
+        else:
+            prob = liveness_res.get("liveness_score", 0.99)
+            
+            # Generate embedding
+            emb_res = get_embedding(latest_img)
+            if emb_res["status"] != "success":
+                st.session_state.verify_outcome = {
+                    "status": "fail",
+                    "stage": "embedding",
+                    "reason": "Could not map facial points cleanly. Hold still."
+                }
+                st.session_state.verify_boot_logs = f"Embedding error: {emb_res['reason']}"
+            else:
+                live_emb = emb_res["embedding"]
+                
+                # Matching 1-to-N
+                try:
+                    conn = sqlite3.connect(db.DB_PATH)
+                    cur = conn.cursor()
+                    cur.execute("""
+                        SELECT t.user_id, u.name, t.angle_type, t.embedding
+                        FROM templates t
+                        JOIN users u ON t.user_id = u.user_id
+                        WHERE u.deleted_at IS NULL
+                    """)
+                    rows = cur.fetchall()
+                    conn.close()
+                    
+                    if not rows:
+                        st.session_state.verify_outcome = {
+                            "status": "fail",
+                            "stage": "matching",
+                            "reason": "No registered accounts found."
+                        }
+                        st.session_state.verify_boot_logs = "No registered users in DB."
+                    else:
+                        best_match_name = None
+                        best_score = -1.0
+                        best_angle = None
+                        best_user_id = None
+                        
+                        for user_id, name, angle_type, blob in rows:
+                            stored_emb = db._blob_to_embedding(blob)
+                            sim = cosine_similarity(live_emb, stored_emb)
+                            if sim > best_score:
+                                best_score = sim
+                                best_match_name = name
+                                best_angle = angle_type
+                                best_user_id = user_id
+                                
+                        if best_score >= matching_threshold:
+                            db.log_verification(best_user_id, qual_res, liveness_res, best_score, "accept")
+                            st.session_state.verify_outcome = {
+                                "status": "pass",
+                                "name": best_match_name,
+                                "score": best_score,
+                                "angle": best_angle,
+                                "quality_score": score,
+                                "liveness_score": prob
+                            }
+                            st.session_state.verify_boot_logs = f"Matched user {best_match_name} (Similarity: {best_score:.4f})"
+                        else:
+                            db.log_verification(None, qual_res, liveness_res, best_score, "reject")
+                            st.session_state.verify_outcome = {
+                                "status": "fail",
+                                "stage": "matching",
+                                "reason": "No matching biometric account found.",
+                                "score": best_score,
+                                "best_match": best_match_name
+                            }
+                            st.session_state.verify_boot_logs = f"Failed match. Best: {best_match_name} (Score: {best_score:.4f})"
+                except Exception as e:
+                    st.session_state.verify_outcome = {
+                        "status": "fail",
+                        "stage": "matching",
+                        "reason": f"Database error: {str(e)}"
+                    }
+
 # ---------------------------------------------------------
 # SPLIT PAGE ARCHITECTURE: PERSISTENT CAMERA + TAB ACTIONS
 # ---------------------------------------------------------

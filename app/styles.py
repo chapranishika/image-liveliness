@@ -165,9 +165,44 @@ def get_css_styles(theme_mode="light"):
         font-weight: 600 !important;
     }}
 
+    /* Wrap the camera video and the guide overlay in a relative box with absolute children */
+    div[data-testid="stVerticalBlock"]:has(iframe[title="streamlit_webrtc.webrtc_streamer"]):has(.face-guide-overlay) {{
+        position: relative !important;
+        height: 340px !important;
+        width: 100% !important;
+        margin: 0 auto !important;
+        overflow: hidden !important;
+        border-radius: 12px !important;
+    }}
+
+    /* Position the WebRTC iframe container absolutely inside the relative block */
+    div[data-testid="stVerticalBlock"]:has(iframe[title="streamlit_webrtc.webrtc_streamer"]):has(.face-guide-overlay) > .element-container:has(iframe[title="streamlit_webrtc.webrtc_streamer"]) {{
+        position: absolute !important;
+        top: 0 !important;
+        left: 0 !important;
+        width: 100% !important;
+        height: 100% !important;
+        z-index: 1 !important;
+        margin: 0 !important;
+        padding: 0 !important;
+    }}
+
+    /* Position the overlay container absolutely inside the relative block, covering 100% of the box */
+    div[data-testid="stVerticalBlock"]:has(iframe[title="streamlit_webrtc.webrtc_streamer"]):has(.face-guide-overlay) > .element-container:has(.face-guide-overlay) {{
+        position: absolute !important;
+        top: 0 !important;
+        left: 0 !important;
+        width: 100% !important;
+        height: 100% !important;
+        z-index: 9999 !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        pointer-events: none !important;
+    }}
+
     /* Stable WebRTC Component container styling */
     iframe[title="streamlit_webrtc.webrtc_streamer"], .stWebRtcStreamer, iframe {{
-        height: 340px !important;
+        height: 100% !important;
         width: 100% !important;
         border-radius: 12px !important;
         border: 1px solid {card_border} !important;
@@ -177,29 +212,19 @@ def get_css_styles(theme_mode="light"):
     
     .stWebRtcStreamer video {{
         width: 100% !important;
-        height: 340px !important;
+        height: 100% !important;
         object-fit: cover !important;
         border-radius: 12px !important;
     }}
 
-    /* Crucial stacking context fix: Force the parent container block containing the overlay to have a higher z-index than the video iframe container */
-    .element-container:has(.face-guide-overlay) {{
-        position: relative !important;
-        z-index: 9999 !important;
-        pointer-events: none !important;
-    }}
-
-    /* Center face guide overlay using normal document flow shifted up by height of video container */
+    /* Face guide overlay styles */
     .face-guide-overlay {{
-        position: relative !important;
-        margin-top: -340px !important; /* Pull overlay exactly on top of the 340px high camera */
-        height: 340px !important;
+        height: 100% !important;
         width: 100% !important;
         display: flex !important;
         align-items: center !important;
         justify-content: center !important;
         pointer-events: none !important;
-        z-index: 9999 !important;
     }}
     
     .face-svg-container {{
@@ -219,16 +244,16 @@ def get_css_styles(theme_mode="light"):
     /* Head + Neck contour path styling with dynamic state transitions */
     .guide-path {{
         fill: none !important;
-        stroke: rgba(148, 163, 184, 0.7) !important; /* Neutral gray-dashed */
-        stroke-width: 3.5 !important;
-        stroke-dasharray: 8,6 !important;
+        stroke: rgba(148, 163, 184, 0.95) !important; /* Neutral gray-dashed, increased opacity */
+        stroke-width: 4.5 !important; /* Increased visual weight */
+        stroke-dasharray: 10,8 !important;
         transition: stroke 0.3s ease, stroke-dasharray 0.3s ease !important;
     }}
     
     /* Amber/Orange outline warning state */
     .guide-path.warning {{
         stroke: #F59E0B !important; /* Amber */
-        stroke-dasharray: 8,6 !important;
+        stroke-dasharray: 10,8 !important;
         animation: guide-pulse-warning 1s infinite alternate !important;
     }}
     
