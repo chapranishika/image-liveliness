@@ -311,13 +311,11 @@ with col_cam:
             step = st.session_state.get("enroll_step", 1)
             if step == 1:
                 instructions_text = "Look straight ahead at the camera"
-                if st.session_state.get("enroll_face_detected_front", False):
-                    overlay_class = "detected"
             elif step == 2:
                 instructions_text = "Slowly turn your head left until you feel a slight stretch, then hold still"
                 arrow_html = '<div class="face-arrow face-arrow-left">←</div>'
-                if st.session_state.get("enroll_face_detected_left", False):
             elif step == 3:
+                instructions_text = "Slowly turn your head right until you feel a slight stretch, then hold still"
                 arrow_html = '<div class="face-arrow face-arrow-right">→</div>'
                 
         # Play quiet success beep if triggered
