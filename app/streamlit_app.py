@@ -161,24 +161,27 @@ def verify_pose_and_quality(frame, expected_pose, profile_name):
         
     pose_res = check_pose(frame)
     if pose_res["status"] == "fail":
-        if expected_pose == "left":
-            return {"status": "fail", "reason": "Please turn your head a little further to the left."}
-        elif expected_pose == "right":
-            return {"status": "fail", "reason": "Please turn your head a little further to the right."}
-        return {"status": "fail", "reason": "Please look directly at the camera."}
+        if profile_name != "lenient":
+            if expected_pose == "left":
+                return {"status": "fail", "reason": "Please turn your head a little further to the left."}
+            elif expected_pose == "right":
+                return {"status": "fail", "reason": "Please turn your head a little further to the right."}
+            return {"status": "fail", "reason": "Please look directly at the camera."}
+        else:
+            pose_res = {"status": "pass", "yaw": 0.0, "classification": "profile_left" if expected_pose == "left" else ("profile_right" if expected_pose == "right" else "frontal")}
 
     yaw = pose_res.get("yaw", 0.0)
     classification = pose_res.get("classification")
     
     # Verify expected pose yaw angles
     if expected_pose == "front":
-        if classification != "frontal":
+        if classification != "frontal" and profile_name != "lenient":
             return {"status": "fail", "reason": "Please look straight ahead at the camera."}
     elif expected_pose == "left":
-        if classification != "profile_left":
+        if classification != "profile_left" and profile_name != "lenient":
             return {"status": "fail", "reason": "Please turn your head a little further to the left."}
     elif expected_pose == "right":
-        if classification != "profile_right":
+        if classification != "profile_right" and profile_name != "lenient":
             return {"status": "fail", "reason": "Please turn your head a little further to the right."}
 
     # Run overall quality calculation
