@@ -166,7 +166,8 @@ def get_css_styles(theme_mode="light"):
     }}
 
     /* Stable WebRTC Component container styling */
-    .stWebRtcStreamer {{
+    iframe[title="streamlit_webrtc.webrtc_streamer"], .stWebRtcStreamer, iframe {{
+        height: 340px !important;
         width: 100% !important;
         border-radius: 12px !important;
         border: 1px solid {card_border} !important;
@@ -176,23 +177,17 @@ def get_css_styles(theme_mode="light"):
     
     .stWebRtcStreamer video {{
         width: 100% !important;
+        height: 340px !important;
         object-fit: cover !important;
         border-radius: 12px !important;
     }}
 
-    /* Set first column relative to absolute position face guide overlay */
-    [data-testid="column"]:first-child {{
-        position: relative !important;
-    }}
-
-    /* Center face guide overlay inside the first column directly over the video stream */
+    /* Center face guide overlay using normal document flow shifted up by height of video container */
     .face-guide-overlay {{
-        position: absolute !important;
-        top: 86px !important; /* Starts exactly at the top boundary of the camera card */
-        left: 50% !important;
-        transform: translateX(-50%) !important;
-        width: calc(100% - 48px) !important; /* Accounts for card padding */
+        position: relative !important;
+        margin-top: -340px !important; /* Pull overlay exactly on top of the 340px high camera */
         height: 340px !important;
+        width: 100% !important;
         display: flex !important;
         align-items: center !important;
         justify-content: center !important;
@@ -204,6 +199,9 @@ def get_css_styles(theme_mode="light"):
         width: 185px !important;
         height: 255px !important;
         position: relative !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
     }}
     
     .guide-svg {{
@@ -312,14 +310,14 @@ def get_css_styles(theme_mode="light"):
     
     .face-arrow-left {{
         top: 50% !important;
-        left: -15px !important;
+        left: 20px !important;
         transform: translateY(-50%) !important;
         animation: guide-pulse-left 0.8s infinite alternate !important;
     }}
     
     .face-arrow-right {{
         top: 50% !important;
-        right: -15px !important;
+        right: 20px !important;
         transform: translateY(-50%) !important;
         animation: guide-pulse-right 0.8s infinite alternate !important;
     }}
