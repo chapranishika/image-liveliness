@@ -244,20 +244,13 @@ with col_cam:
     st.markdown('<div class="consumer-title">Camera Feed</div>', unsafe_allow_html=True)
     st.markdown('<div class="consumer-sub">Align your face inside the dashed area below.</div>', unsafe_allow_html=True)
     
-    # 1. Continuous single-camera streamer
+    # 1. Continuous single-camera streamer (lightweight constraints for zero lag)
     st.markdown('<div class="camera-wrapper">', unsafe_allow_html=True)
     ctx = webrtc_streamer(
         key="shared_webrtc_camera",
         mode=WebRtcMode.SENDRECV,
         video_frame_callback=st.session_state.grabber.video_frame_callback,
-        media_stream_constraints={
-            "video": {
-                "width": {"ideal": 1280},
-                "height": {"ideal": 720},
-                "frameRate": {"ideal": 30}
-            },
-            "audio": False
-        },
+        media_stream_constraints={"video": True, "audio": False},
         async_processing=True
     )
     st.markdown('</div>', unsafe_allow_html=True) # Close camera-wrapper
@@ -288,10 +281,9 @@ with col_cam:
             if st.session_state.get("enroll_face_detected_right", False):
                 overlay_class = "detected"
                 
-    # 2. Render centered face guide overlay unconditionally to stabilize the DOM
-    overlay_visibility = "flex" if ctx.state.playing else "none"
+    # 2. Render centered face guide overlay unconditionally in the parent DOM (always active)
     st.markdown(f"""
-    <div class="face-guide-overlay {overlay_class}" style="display: {overlay_visibility} !important;">
+    <div class="face-guide-overlay {overlay_class}">
         <div class="face-oval {overlay_class}">
             {arrow_html}
         </div>
