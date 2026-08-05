@@ -182,6 +182,13 @@ def get_css_styles(theme_mode="light"):
         border-radius: 12px !important;
     }}
 
+    /* Crucial stacking context fix: Force the parent container block containing the overlay to have a higher z-index than the video iframe container */
+    .element-container:has(.face-guide-overlay) {{
+        position: relative !important;
+        z-index: 9999 !important;
+        pointer-events: none !important;
+    }}
+
     /* Center face guide overlay using normal document flow shifted up by height of video container */
     .face-guide-overlay {{
         position: relative !important;
@@ -192,7 +199,7 @@ def get_css_styles(theme_mode="light"):
         align-items: center !important;
         justify-content: center !important;
         pointer-events: none !important;
-        z-index: 1000 !important;
+        z-index: 9999 !important;
     }}
     
     .face-svg-container {{
