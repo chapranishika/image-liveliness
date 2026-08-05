@@ -254,66 +254,64 @@ def score_occlusion_for_profile(frame):
 col_cam, col_actions = st.columns([1.1, 0.9])
 
 with col_cam:
-    st.markdown('<div class="consumer-card">', unsafe_allow_html=True)
-    st.markdown('<div class="consumer-title">Camera Feed</div>', unsafe_allow_html=True)
-    st.markdown('<div class="consumer-sub">Align your face inside the dashed area below.</div>', unsafe_allow_html=True)
-    
-    # 1. Continuous single-camera streamer (lightweight constraints for zero lag)
-    ctx = webrtc_streamer(
-        key="shared_webrtc_camera",
-        mode=WebRtcMode.SENDRECV,
-        video_frame_callback=st.session_state.grabber.video_frame_callback,
-        media_stream_constraints={"video": True, "audio": False},
-        async_processing=True
-    )
-    
-    # Determine target state for dynamic guide styling
-    instructions_text = "Align your face with the guide"
-    overlay_class = ""
-    arrow_html = ""
-    
-    if st.session_state.active_view == "Verify Identity":
-        if st.session_state.get("verify_face_detected", False):
-            overlay_class = "detected"
-    else:
-        # Guided Enrollment details
-        step = st.session_state.get("enroll_step", 1)
-        if step == 1:
-            instructions_text = "Look straight ahead at the camera"
-            if st.session_state.get("enroll_face_detected_front", False):
-                overlay_class = "detected"
-        elif step == 2:
-            instructions_text = "Slowly turn your head left until you feel a slight stretch, then hold still"
-            arrow_html = '<div class="face-arrow face-arrow-left">←</div>'
-            if st.session_state.get("enroll_face_detected_left", False):
-                overlay_class = "detected"
-        elif step == 3:
-            instructions_text = "Slowly turn your head right until you feel a slight stretch, then hold still"
-            arrow_html = '<div class="face-arrow face-arrow-right">→</div>'
-            if st.session_state.get("enroll_face_detected_right", False):
-                overlay_class = "detected"
-                
-    # 2. Render centered face guide overlay unconditionally in the parent DOM (always active)
-    st.markdown(f"""
-    <div class="face-guide-overlay {overlay_class}">
-        <div class="face-svg-container {overlay_class}">
-            <svg viewBox="0 0 200 280" class="guide-svg">
-                <path class="guide-path {overlay_class}" d="M100,25 C145,25 175,55 175,115 C175,165 155,195 130,210 L130,245 C130,252 140,258 150,262 L50,262 C60,258 70,252 70,245 L70,210 C45,195 25,165 25,115 C25,55 55,25 100,25 Z" />
-            </svg>
-            {arrow_html}
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
-    
-    # Render instructions text unconditionally to prevent layout shifts
-    status_text = instructions_text if ctx.state.playing else "Camera offline. Please click the start button above to activate the scanner."
-    st.markdown(f"""
-    <div style="text-align: center; margin-top: 12px; font-size: 0.85rem; color: #64748B; font-weight: 500;">
-        {status_text}
-    </div>
-    """, unsafe_allow_html=True)
+    with st.container(border=True):
+        st.markdown('<div class="consumer-title">Camera Feed</div>', unsafe_allow_html=True)
+        st.markdown('<div class="consumer-sub">Align your face inside the dashed area below.</div>', unsafe_allow_html=True)
         
-    st.markdown('</div>', unsafe_allow_html=True) # Close consumer-card
+        # 1. Continuous single-camera streamer (lightweight constraints for zero lag)
+        ctx = webrtc_streamer(
+            key="shared_webrtc_camera",
+            mode=WebRtcMode.SENDRECV,
+            video_frame_callback=st.session_state.grabber.video_frame_callback,
+            media_stream_constraints={"video": True, "audio": False},
+            async_processing=True
+        )
+        
+        # Determine target state for dynamic guide styling
+        instructions_text = "Align your face with the guide"
+        overlay_class = ""
+        arrow_html = ""
+        
+        if st.session_state.active_view == "Verify Identity":
+            if st.session_state.get("verify_face_detected", False):
+                overlay_class = "detected"
+        else:
+            # Guided Enrollment details
+            step = st.session_state.get("enroll_step", 1)
+            if step == 1:
+                instructions_text = "Look straight ahead at the camera"
+                if st.session_state.get("enroll_face_detected_front", False):
+                    overlay_class = "detected"
+            elif step == 2:
+                instructions_text = "Slowly turn your head left until you feel a slight stretch, then hold still"
+                arrow_html = '<div class="face-arrow face-arrow-left">←</div>'
+                if st.session_state.get("enroll_face_detected_left", False):
+                    overlay_class = "detected"
+            elif step == 3:
+                instructions_text = "Slowly turn your head right until you feel a slight stretch, then hold still"
+                arrow_html = '<div class="face-arrow face-arrow-right">→</div>'
+                if st.session_state.get("enroll_face_detected_right", False):
+                    overlay_class = "detected"
+                    
+        # 2. Render centered face guide overlay unconditionally in the parent DOM (always active)
+        st.markdown(f"""
+        <div class="face-guide-overlay {overlay_class}">
+            <div class="face-svg-container {overlay_class}">
+                <svg viewBox="0 0 200 280" class="guide-svg">
+                    <path class="guide-path {overlay_class}" d="M100,25 C145,25 175,55 175,115 C175,165 155,195 130,210 L130,245 C130,252 140,258 150,262 L50,262 C60,258 70,252 70,245 L70,210 C45,195 25,165 25,115 C25,55 55,25 100,25 Z" />
+                </svg>
+                {arrow_html}
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        # Render instructions text unconditionally to prevent layout shifts
+        status_text = instructions_text if ctx.state.playing else "Camera offline. Please click the start button above to activate the scanner."
+        st.markdown(f"""
+        <div style="text-align: center; margin-top: 12px; font-size: 0.85rem; color: #64748B; font-weight: 500;">
+            {status_text}
+        </div>
+        """, unsafe_allow_html=True)
 
 # Grab current frame from grabber thread safely
 latest_img = None
@@ -323,32 +321,29 @@ if ctx.state.playing:
             latest_img = st.session_state.grabber.latest_frame.copy()
 
 with col_actions:
-    st.markdown('<div class="consumer-card">', unsafe_allow_html=True)
-    
-    # Custom high-end segmented tab selection with theme mode toggle side-by-side
-    st.markdown('<div style="margin-bottom: 1.5rem;">', unsafe_allow_html=True)
-    col_tab_item, col_theme_item = st.columns([0.65, 0.35])
-    with col_tab_item:
-        selected_view = st.radio(
-            "Navigation",
-            options=["Verify Identity", "Guided Enrollment"],
-            label_visibility="collapsed"
-        )
-        st.session_state.active_view = selected_view
-    with col_theme_item:
-        theme_options = ["☀️ Light", "🌙 Dark"]
-        current_theme_idx = 0 if st.session_state.theme_mode == "light" else 1
-        selected_theme = st.selectbox(
-            "Theme Mode Selection",
-            options=theme_options,
-            index=current_theme_idx,
-            label_visibility="collapsed"
-        )
-        new_theme_mode = "light" if "Light" in selected_theme else "dark"
-        if new_theme_mode != st.session_state.theme_mode:
-            st.session_state.theme_mode = new_theme_mode
-            st.rerun()
-    st.markdown('</div>', unsafe_allow_html=True)
+    with st.container(border=True):
+        # Custom high-end segmented tab selection with theme mode toggle side-by-side
+        col_tab_item, col_theme_item = st.columns([0.65, 0.35])
+        with col_tab_item:
+            selected_view = st.radio(
+                "Navigation",
+                options=["Verify Identity", "Guided Enrollment"],
+                label_visibility="collapsed"
+            )
+            st.session_state.active_view = selected_view
+        with col_theme_item:
+            theme_options = ["☀️ Light", "🌙 Dark"]
+            current_theme_idx = 0 if st.session_state.theme_mode == "light" else 1
+            selected_theme = st.selectbox(
+                "Theme Mode Selection",
+                options=theme_options,
+                index=current_theme_idx,
+                label_visibility="collapsed"
+            )
+            new_theme_mode = "light" if "Light" in selected_theme else "dark"
+            if new_theme_mode != st.session_state.theme_mode:
+                st.session_state.theme_mode = new_theme_mode
+                st.rerun()
     
     # ---------------------------------------------------------
     # TAB: VERIFY IDENTITY
@@ -714,7 +709,7 @@ with col_actions:
             else:
                 st.markdown('<div class="clean-empty-state" style="padding:15px 5px;"><span class="clean-empty-text" style="font-size:0.75rem;">Right turn</span></div>', unsafe_allow_html=True)
                 
-    st.markdown('</div>', unsafe_allow_html=True) # Close consumer-card
+
 
 # ---------------------------------------------------------
 # BOTTOM EXPANDER: REGULATORY COMPLIANCE & ADMIN AUDITS

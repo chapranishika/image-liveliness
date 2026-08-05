@@ -38,7 +38,7 @@ def get_css_styles(theme_mode="light"):
     }}
     
     /* Consumer Card Elements */
-    .consumer-card {{
+    .consumer-card, div[data-testid="stVerticalBlockBorderWrapper"] {{
         background: {card_bg} !important;
         border: 1px solid {card_border} !important;
         border-radius: 12px !important;
