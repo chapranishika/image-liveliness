@@ -216,18 +216,31 @@ def get_css_styles(theme_mode="light"):
         height: 100% !important;
     }}
     
-    /* Head + Neck contour path styling */
+    /* Head + Neck contour path styling with dynamic state transitions */
     .guide-path {{
         fill: none !important;
-        stroke: rgba(255, 255, 255, 0.85) !important;
+        stroke: rgba(148, 163, 184, 0.7) !important; /* Neutral gray-dashed */
         stroke-width: 3.5 !important;
         stroke-dasharray: 8,6 !important;
-        transition: all 0.3s ease !important;
+        transition: stroke 0.3s ease, stroke-dasharray 0.3s ease !important;
     }}
     
-    .guide-path.detected {{
-        stroke: #10B981 !important; /* Green */
+    /* Amber/Orange outline warning state */
+    .guide-path.warning {{
+        stroke: #F59E0B !important; /* Amber */
+        stroke-dasharray: 8,6 !important;
+        animation: guide-pulse-warning 1s infinite alternate !important;
+    }}
+    
+    /* Green outline success state */
+    .guide-path.success {{
+        stroke: #10B981 !important; /* Emerald Green */
         stroke-dasharray: none !important;
+    }}
+    
+    @keyframes guide-pulse-warning {{
+        from {{ opacity: 0.65; }}
+        to {{ opacity: 1.0; }}
     }}
 
     /* Friendly Round Buttons */
@@ -253,6 +266,22 @@ def get_css_styles(theme_mode="light"):
     
     div.stButton > button:active {{
         transform: translateY(0) !important;
+    }}
+
+    /* Quiet secondary look for manual fallback buttons */
+    div.stButton > button[key*="manual_fallback"] {{
+        background: transparent !important;
+        color: {subtext_color} !important;
+        border: 1px dashed {card_border} !important;
+        font-size: 0.8rem !important;
+        padding: 6px 16px !important;
+        box-shadow: none !important;
+        width: auto !important;
+    }}
+    div.stButton > button[key*="manual_fallback"]:hover {{
+        background: {segment_bg} !important;
+        color: {text_color} !important;
+        border-color: {subtext_color} !important;
     }}
 
     /* Friendly Step Tracker Bar */
@@ -337,6 +366,86 @@ def get_css_styles(theme_mode="light"):
     @keyframes guide-pulse-right {{
         from {{ transform: translateY(-50%) translateX(0); }}
         to {{ transform: translateY(-50%) translateX(8px); }}
+    }}
+
+    /* Dynamic guidance text change animations */
+    .guidance-text-container {{
+        animation: guidance-fade-in 0.3s ease-out !important;
+    }}
+    
+    @keyframes guidance-fade-in {{
+        from {{ opacity: 0.6; transform: translateY(2px); }}
+        to {{ opacity: 1.0; transform: translateY(0); }}
+    }}
+
+    /* Premium Verified Success Screen and Checkmark Animation */
+    .success-screen-card {{
+        text-align: center !important;
+        padding: 40px 24px !important;
+        border-radius: 12px !important;
+        background: #F0FDF4 !important;
+        border: 1px solid #BBF7D0 !important;
+        box-shadow: 0 10px 15px -3px rgba(16, 185, 129, 0.05) !important;
+        animation: success-card-fade 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards !important;
+    }}
+    
+    .success-screen-title {{
+        font-size: 1.5rem !important;
+        font-weight: 800 !important;
+        color: #166534 !important;
+        margin-top: 20px !important;
+        margin-bottom: 6px !important;
+    }}
+    
+    .success-screen-sub {{
+        font-size: 0.95rem !important;
+        color: #15803D !important;
+        font-weight: 600 !important;
+    }}
+
+    .success-checkmark-circle {{
+        width: 84px !important;
+        height: 84px !important;
+        margin: 0 auto !important;
+    }}
+    
+    .checkmark-svg {{
+        width: 100% !important;
+        height: 100% !important;
+    }}
+    
+    .checkmark-circle-path {{
+        stroke-dasharray: 166 !important;
+        stroke-dashoffset: 166 !important;
+        stroke-width: 3.5 !important;
+        stroke-miterlimit: 10 !important;
+        stroke: #10B981 !important;
+        fill: none !important;
+        animation: checkmark-stroke 0.5s cubic-bezier(0.65, 0, 0.45, 1) forwards !important;
+    }}
+    
+    .checkmark-check-path {{
+        transform-origin: 50% 50% !important;
+        stroke-dasharray: 48 !important;
+        stroke-dashoffset: 48 !important;
+        stroke-width: 4.5 !important;
+        stroke-linecap: round !important;
+        stroke: #10B981 !important;
+        fill: none !important;
+        animation: checkmark-stroke-check 0.3s cubic-bezier(0.65, 0, 0.45, 1) 0.5s forwards !important;
+    }}
+    
+    @keyframes checkmark-stroke {{
+        100% {{ stroke-dashoffset: 0; }}
+    }}
+    
+    @keyframes checkmark-stroke-check {{
+        100% {{ stroke-dashoffset: 0; }}
+    }}
+    
+    @keyframes success-card-fade {{
+        from {{ transform: scale(0.96); opacity: 0; }}
+        to {{ transform: scale(1.0); opacity: 1; }}
     }}
 </style>
 """

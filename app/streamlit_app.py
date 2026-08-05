@@ -47,6 +47,37 @@ st.set_page_config(
 )
 st.markdown(get_css_styles(st.session_state.theme_mode), unsafe_allow_html=True)
 
+# Generate pleasant arpeggio confirmation beep sound dynamically
+import base64
+import math
+import struct
+
+def get_beep_wav_b64():
+    sample_rate = 8000
+    frequency = 660.0 # E5 tone
+    duration = 0.18
+    num_samples = int(sample_rate * duration)
+    
+    header = struct.pack(
+        "<4sI4s4sIHHIIHH4sI",
+        b"RIFF", 36 + num_samples, b"WAVE",
+        b"fmt ", 16, 1, 1, sample_rate, sample_rate, 1, 8,
+        b"data", num_samples
+    )
+    
+    data = bytearray()
+    for i in range(num_samples):
+        # Arpeggiate to A5 after 0.08s
+        f = 880.0 if (i > sample_rate * 0.08) else frequency
+        envelope = 1.0 - (i / num_samples)
+        val = int(128 + 50 * math.sin(2.0 * math.pi * f * i / sample_rate) * envelope)
+        data.append(val)
+        
+    wav_bytes = header + bytes(data)
+    return base64.b64encode(wav_bytes).decode("ascii")
+
+BEEP_DATA_URI = f"data:audio/wav;base64,{get_beep_wav_b64()}"
+
 # ---------------------------------------------------------
 # STREAMLIT WEBRTC FRAME GRABBER
 # ---------------------------------------------------------
@@ -286,40 +317,66 @@ with col_cam:
                 instructions_text = "Slowly turn your head left until you feel a slight stretch, then hold still"
                 arrow_html = '<div class="face-arrow face-arrow-left">←</div>'
                 if st.session_state.get("enroll_face_detected_left", False):
-                    overlay_class = "detected"
             elif step == 3:
-                instructions_text = "Slowly turn your head right until you feel a slight stretch, then hold still"
                 arrow_html = '<div class="face-arrow face-arrow-right">→</div>'
-                if st.session_state.get("enroll_face_detected_right", False):
-                    overlay_class = "detected"
-                    
+                
+        # Play quiet success beep if triggered
+        if st.session_state.get("play_sound_trigger", False):
+            st.session_state.play_sound_trigger = False
+            st.markdown(f'<audio autoplay src="{BEEP_DATA_URI}" style="display:none;"></audio>', unsafe_allow_html=True)
+            
         # 2. Render centered face guide overlay unconditionally in the parent DOM (always active)
         st.markdown(f"""
         <div class="face-guide-overlay {overlay_class}">
             <div class="face-svg-container {overlay_class}">
                 <svg viewBox="0 0 200 280" class="guide-svg">
                     <path class="guide-path {overlay_class}" d="M100,25 C145,25 175,55 175,115 C175,165 155,195 130,210 L130,245 C130,252 140,258 150,262 L50,262 C60,258 70,252 70,245 L70,210 C45,195 25,165 25,115 C25,55 55,25 100,25 Z" />
+                    {progress_ring_svg}
                 </svg>
                 {arrow_html}
             </div>
         </div>
         """, unsafe_allow_html=True)
         
-        # Render instructions text unconditionally to prevent layout shifts
+        # Render instructions text with soft slide/fade transition container
         status_text = instructions_text if ctx.state.playing else "Camera offline. Please click the start button above to activate the scanner."
         st.markdown(f"""
-        <div style="text-align: center; margin-top: 12px; font-size: 0.85rem; color: #64748B; font-weight: 500;">
+        <div class="guidance-text-container" style="text-align: center; margin-top: 12px; font-size: 0.85rem; color: #64748B; font-weight: 500;">
             {status_text}
         </div>
         """, unsafe_allow_html=True)
+        
+        # 3. Quiet manual fallback capture button below camera stream
+        if ctx.state.playing and not is_flashing:
+            st.markdown("<div style='text-align: center; margin-top: 10px; margin-bottom: 5px;'>", unsafe_allow_html=True)
+            if st.button("Having trouble? Tap to capture manually", key="manual_fallback_capture_btn"):
+                if latest_img is not None:
+                    st.session_state.play_sound_trigger = True
+                    st.session_state.flash_end_time = time.time() + 0.6
+                    if st.session_state.active_view == "Verify Identity":
+                        run_verification_logic(latest_img, active_prof)
+                    else:
+                        step = st.session_state.get("enroll_step", 1)
+                        if step == 1:
+                            st.session_state.enroll_front = latest_img.copy()
+                            st.session_state.enroll_step = 2
+                        elif step == 2:
+                            st.session_state.enroll_left = latest_img.copy()
+                            st.session_state.enroll_step = 3
+                        elif step == 3:
+                            st.session_state.enroll_right = latest_img.copy()
+                            st.session_state.enroll_step = 4
+                    st.rerun()
+                else:
+                    st.error("Please wait until the camera feed is ready.")
+            st.markdown("</div>", unsafe_allow_html=True)
 
-# Grab current frame from grabber thread safely
+# Fetch latest_img reference for compatibility with actions column blocks
 latest_img = None
 if ctx.state.playing:
     with st.session_state.grabber.frame_lock:
         if st.session_state.grabber.latest_frame is not None:
             latest_img = st.session_state.grabber.latest_frame.copy()
-
 with col_actions:
     with st.container(border=True):
         # Custom high-end segmented tab selection with theme mode toggle side-by-side
@@ -352,130 +409,24 @@ with col_actions:
         st.markdown('<div class="consumer-title">Welcome</div>', unsafe_allow_html=True)
         st.markdown('<div class="consumer-sub">Scan your face to quickly verify your identity.</div>', unsafe_allow_html=True)
         
-        # Verify action triggers
-        if st.button("Start Verification", key="verify_action_btn"):
-            if latest_img is None:
-                st.error("Please turn on the camera to begin verification.")
-            else:
-                st.session_state.verify_image = latest_img.copy()
-                
-                # Check quality & face presence
-                qual_res = run_quality_stage(latest_img, profile=selected_profile)
-                
-                # Headset bypass override check: if quality failed, allow fallback if vital signals are solid
-                if qual_res["status"] == "fail" and "all_results" in qual_res:
-                    all_res = qual_res["all_results"]
-                    sub = all_res.get("sub_scores", {})
-                    brightness_val = sub.get("brightness", {}).get("score", 100) >= 50
-                    position_val = sub.get("position", {}).get("score", 100) >= 50
-                    pose_val = sub.get("pose", {}).get("score", 100) >= 50
-                    if brightness_val and position_val and pose_val:
-                        qual_res["status"] = "pass"
-                        
-                if qual_res["status"] == "fail":
-                    st.session_state.verify_face_detected = False
-                    st.session_state.verify_outcome = {
-                        "status": "fail",
-                        "stage": "quality",
-                        "reason": qual_res["reason"],
-                        "all_results": qual_res.get("all_results")
-                    }
-                    st.session_state.verify_boot_logs = f"Quality check failed: {qual_res['reason']}"
+        # Beautiful informative auto-capture verification card element
+        if "verify_outcome" not in st.session_state:
+            st.markdown("""
+            <div style="background: #EFF6FF; border-left: 4px solid #3B82F6; padding: 12px 16px; border-radius: 8px; font-size: 0.85rem; color: #1E40AF; margin-bottom:1.5rem; font-weight: 500; line-height: 1.4;">
+                ℹ️ Look at the camera. The system will scan and verify your identity automatically once aligned.
+            </div>
+            """, unsafe_allow_html=True)
+            
+            # Simple button to manually trigger verification immediately if needed
+            if st.button("Verify Manually", key="verify_action_btn"):
+                if latest_img is None:
+                    st.error("Please turn on the camera first.")
                 else:
-                    st.session_state.verify_face_detected = True
-                    score = qual_res["all_results"]["overall_score"]
-                    
-                    # Check liveness
-                    liveness_res = check_passive_liveness(latest_img)
-                    if liveness_res["status"] == "fail" and selected_profile == "lenient":
-                        liveness_res["status"] = "pass"
-                        
-                    if liveness_res["status"] == "fail":
-                        st.session_state.verify_outcome = {
-                            "status": "fail",
-                            "stage": "liveness",
-                            "reason": "Biometric check failed. Please present a live face."
-                        }
-                        st.session_state.verify_boot_logs = "Liveness check failed."
-                    else:
-                        prob = liveness_res.get("liveness_score", 0.99)
-                        
-                        # Generate embedding
-                        emb_res = get_embedding(latest_img)
-                        if emb_res["status"] != "success":
-                            st.session_state.verify_outcome = {
-                                "status": "fail",
-                                "stage": "embedding",
-                                "reason": "Could not map facial points cleanly. Hold still."
-                            }
-                            st.session_state.verify_boot_logs = f"Embedding error: {emb_res['reason']}"
-                        else:
-                            live_emb = emb_res["embedding"]
-                            
-                            # Matching 1-to-N
-                            try:
-                                conn = sqlite3.connect(db.DB_PATH)
-                                cur = conn.cursor()
-                                cur.execute("""
-                                    SELECT t.user_id, u.name, t.angle_type, t.embedding
-                                    FROM templates t
-                                    JOIN users u ON t.user_id = u.user_id
-                                    WHERE u.deleted_at IS NULL
-                                """)
-                                rows = cur.fetchall()
-                                conn.close()
-                                
-                                if not rows:
-                                    st.session_state.verify_outcome = {
-                                        "status": "fail",
-                                        "stage": "matching",
-                                        "reason": "No registered accounts found."
-                                    }
-                                    st.session_state.verify_boot_logs = "No registered users in DB."
-                                else:
-                                    best_match_name = None
-                                    best_score = -1.0
-                                    best_angle = None
-                                    best_user_id = None
-                                    
-                                    for user_id, name, angle_type, blob in rows:
-                                        stored_emb = db._blob_to_embedding(blob)
-                                        sim = cosine_similarity(live_emb, stored_emb)
-                                        if sim > best_score:
-                                            best_score = sim
-                                            best_match_name = name
-                                            best_angle = angle_type
-                                            best_user_id = user_id
-                                            
-                                    if best_score >= matching_threshold:
-                                        db.log_verification(best_user_id, qual_res, liveness_res, best_score, "accept")
-                                        st.session_state.verify_outcome = {
-                                            "status": "pass",
-                                            "name": best_match_name,
-                                            "score": best_score,
-                                            "angle": best_angle,
-                                            "quality_score": score,
-                                            "liveness_score": prob
-                                        }
-                                        st.session_state.verify_boot_logs = f"Matched user {best_match_name} (Similarity: {best_score:.4f})"
-                                    else:
-                                        db.log_verification(None, qual_res, liveness_res, best_score, "reject")
-                                        st.session_state.verify_outcome = {
-                                            "status": "fail",
-                                            "stage": "matching",
-                                            "reason": "No matching biometric account found.",
-                                            "score": best_score,
-                                            "best_match": best_match_name
-                                        }
-                                        st.session_state.verify_boot_logs = f"Failed match. Best: {best_match_name} (Score: {best_score:.4f})"
-                            except Exception as e:
-                                st.session_state.verify_outcome = {
-                                    "status": "fail",
-                                    "stage": "matching",
-                                    "reason": f"Database error: {str(e)}"
-                                }
-                st.rerun()
-                
+                    st.session_state.play_sound_trigger = True
+                    st.session_state.flash_end_time = time.time() + 0.6
+                    run_verification_logic(latest_img, selected_profile)
+                    st.rerun()
+        
         # Verification Outcome Presentation
         if "verify_outcome" in st.session_state:
             st.markdown("<hr style='margin: 20px 0;'>", unsafe_allow_html=True)
@@ -489,13 +440,25 @@ with col_actions:
                 
             if outcome["status"] == "pass":
                 st.markdown(f"""
-                <div style="margin-top:15px; margin-bottom: 10px;">
-                    <span class="status-badge success">✓ Access Granted</span>
-                </div>
-                <div style="font-size:1rem; font-weight:600; color:#059669;">
-                    Identity verified. Welcome back, {outcome['name']}!
+                <div class="success-screen-card">
+                    <div class="success-checkmark-circle">
+                        <svg class="checkmark-svg" viewBox="0 0 52 52">
+                            <circle class="checkmark-circle-path" cx="26" cy="26" r="25" fill="none"/>
+                            <path class="checkmark-check-path" fill="none" d="M14.1 27.2 l7.1 7.2 16.7-16.8"/>
+                        </svg>
+                    </div>
+                    <div class="success-screen-title">You're Verified!</div>
+                    <div class="success-screen-sub">Welcome back, {outcome['name']}</div>
                 </div>
                 """, unsafe_allow_html=True)
+                
+                # Add a reset button to allow re-verifying
+                st.markdown("<div style='margin-top: 15px;'>", unsafe_allow_html=True)
+                if st.button("Verify Again", key="reset_verify_outcome_btn"):
+                    st.session_state.pop("verify_outcome", None)
+                    st.session_state.pop("verify_image", None)
+                    st.rerun()
+                st.markdown("</div>", unsafe_allow_html=True)
             else:
                 st.markdown(f"""
                 <div style="margin-top:15px; margin-bottom: 10px;">
@@ -576,66 +539,17 @@ with col_actions:
         reg_name = st.text_input("Full Name", key="enroll_name", placeholder="Enter your full name")
         consent = st.checkbox("I agree to store my encrypted facial signature for security logins.", key="enroll_consent")
 
-        # Step Gated buttons
+        # Step Gated buttons (All auto-captured, showing back button guides only)
         if step == 1:
-            if st.button("Capture Front Photo", key="capture_front_btn"):
-                if latest_img is None:
-                    st.error("Please turn on the camera first.")
-                else:
-                    check_res = verify_pose_and_quality(latest_img, "front", selected_profile)
-                    if check_res["status"] == "pass":
-                        st.session_state.enroll_front = latest_img.copy()
-                        st.session_state.enroll_face_detected_front = True
-                        st.session_state.enroll_step = 2
-                        st.success("Front photo captured successfully!")
-                        st.rerun()
-                    else:
-                        st.session_state.enroll_face_detected_front = False
-                        st.error(check_res["reason"])
-
+            st.info("Align your face inside the outline to capture automatically.")
         elif step == 2:
-            col_btns = st.columns(2)
-            with col_btns[0]:
-                if st.button("◀ Back", key="back_to_1"):
-                    st.session_state.enroll_step = 1
-                    st.rerun()
-            with col_btns[1]:
-                if st.button("Capture Left Photo", key="capture_left_btn"):
-                    if latest_img is None:
-                        st.error("Please turn on the camera first.")
-                    else:
-                        check_res = verify_pose_and_quality(latest_img, "left", selected_profile)
-                        if check_res["status"] == "pass":
-                            st.session_state.enroll_left = latest_img.copy()
-                            st.session_state.enroll_face_detected_left = True
-                            st.session_state.enroll_step = 3
-                            st.success("Left profile captured successfully!")
-                            st.rerun()
-                        else:
-                            st.session_state.enroll_face_detected_left = False
-                            st.error(check_res["reason"])
-
+            if st.button("◀ Back to Step 1", key="back_to_1"):
+                st.session_state.enroll_step = 1
+                st.rerun()
         elif step == 3:
-            col_btns = st.columns(2)
-            with col_btns[0]:
-                if st.button("◀ Back", key="back_to_2"):
-                    st.session_state.enroll_step = 2
-                    st.rerun()
-            with col_btns[1]:
-                if st.button("Capture Right Photo", key="capture_right_btn"):
-                    if latest_img is None:
-                        st.error("Please turn on the camera first.")
-                    else:
-                        check_res = verify_pose_and_quality(latest_img, "right", selected_profile)
-                        if check_res["status"] == "pass":
-                            st.session_state.enroll_right = latest_img.copy()
-                            st.session_state.enroll_face_detected_right = True
-                            st.session_state.enroll_step = 4
-                            st.success("Right profile captured successfully!")
-                            st.rerun()
-                        else:
-                            st.session_state.enroll_face_detected_right = False
-                            st.error(check_res["reason"])
+            if st.button("◀ Back to Step 2", key="back_to_2"):
+                st.session_state.enroll_step = 2
+                st.rerun()
 
         elif step == 4:
             st.markdown("<div style='background: #ECFDF5; border-left:4px solid #10B981; padding: 12px 16px; border-radius: 4px; margin-bottom:15px; font-size:0.85rem; color:#065F46;'>✓ All three photos captured successfully. Click register below to complete.</div>", unsafe_allow_html=True)
@@ -830,3 +744,10 @@ with st.expander("🛠️ System Management & Audits (Admin/Compliance Review)",
     with col_h2:
         st.markdown(f"**Models Cached**: {'✓ PASS' if mod_ok else '✗ FAIL'} ({mod_msg})")
         st.markdown(f"**Camera Ready**: {'✓ PASS' if cam_ok else '✗ FAIL'} ({cam_msg})")
+
+# ---------------------------------------------------------
+# ACTIVE RERUN TRIGGER LOOP
+# ---------------------------------------------------------
+if ctx.state.playing and run_realtime_loop:
+    time.sleep(0.08) # ~12.5 checks/second
+    st.rerun()
