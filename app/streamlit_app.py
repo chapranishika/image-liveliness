@@ -240,88 +240,53 @@ with col_cam:
         key="shared_webrtc_camera",
         mode=WebRtcMode.SENDRECV,
         video_frame_callback=st.session_state.grabber.video_frame_callback,
-        media_stream_constraints={"video": True, "audio": False},
+        media_stream_constraints={
+            "video": {
+                "width": {"ideal": 1280},
+                "height": {"ideal": 720},
+                "frameRate": {"ideal": 30}
+            },
+            "audio": False
+        },
         async_processing=True
     )
+    st.markdown('</div>', unsafe_allow_html=True) # Close camera-wrapper
     
-    # Determine target state for dynamic CSS guide styling
+    # Determine target state for dynamic guide styling
     instructions_text = "Align your face with the guide"
-    guide_detected = False
+    overlay_class = ""
+    arrow_html = ""
     
     if st.session_state.active_view == "Verify Identity":
         if st.session_state.get("verify_face_detected", False):
-            guide_detected = True
+            overlay_class = "detected"
     else:
         # Guided Enrollment details
         step = st.session_state.get("enroll_step", 1)
         if step == 1:
             instructions_text = "Look straight ahead at the camera"
             if st.session_state.get("enroll_face_detected_front", False):
-                guide_detected = True
+                overlay_class = "detected"
         elif step == 2:
             instructions_text = "Slowly turn your head left until you feel a slight stretch, then hold still"
+            arrow_html = '<div class="face-arrow face-arrow-left">←</div>'
             if st.session_state.get("enroll_face_detected_left", False):
-                guide_detected = True
+                overlay_class = "detected"
         elif step == 3:
             instructions_text = "Slowly turn your head right until you feel a slight stretch, then hold still"
+            arrow_html = '<div class="face-arrow face-arrow-right">→</div>'
             if st.session_state.get("enroll_face_detected_right", False):
-                guide_detected = True
+                overlay_class = "detected"
                 
-    # 2. Render dynamic guides on active camera stream
+    # 2. Render centered face guide overlay directly over video container
     if ctx.state.playing:
-        if guide_detected:
-            st.markdown("""
-            <style>
-                .stWebRtcStreamer::after {
-                    border-style: solid !important;
-                    border-color: #10B981 !important; /* Green */
-                    box-shadow: 0 0 0 9999px rgba(15, 23, 42, 0.15) !important;
-                }
-            </style>
-            """, unsafe_allow_html=True)
-            
-        if st.session_state.active_view == "Guided Enrollment":
-            step = st.session_state.get("enroll_step", 1)
-            if step == 2:
-                st.markdown("""
-                <style>
-                    .stWebRtcStreamer::before {
-                        content: "←" !important;
-                        position: absolute !important;
-                        top: 50% !important;
-                        left: 20px !important;
-                        transform: translateY(-50%) !important;
-                        font-size: 3.5rem !important;
-                        color: #3b82f6 !important;
-                        font-weight: 700 !important;
-                        z-index: 1001 !important;
-                        text-shadow: 0 2px 4px rgba(0, 0, 0, 0.4) !important;
-                        animation: guide-pulse-left 0.8s infinite alternate !important;
-                        pointer-events: none !important;
-                    }
-                </style>
-                """, unsafe_allow_html=True)
-            elif step == 3:
-                st.markdown("""
-                <style>
-                    .stWebRtcStreamer::before {
-                        content: "→" !important;
-                        position: absolute !important;
-                        top: 50% !important;
-                        right: 20px !important;
-                        transform: translateY(-50%) !important;
-                        font-size: 3.5rem !important;
-                        color: #3b82f6 !important;
-                        font-weight: 700 !important;
-                        z-index: 1001 !important;
-                        text-shadow: 0 2px 4px rgba(0, 0, 0, 0.4) !important;
-                        animation: guide-pulse-right 0.8s infinite alternate !important;
-                        pointer-events: none !important;
-                    }
-                </style>
-                """, unsafe_allow_html=True)
-        
-    st.markdown('</div>', unsafe_allow_html=True) # Close camera-wrapper
+        st.markdown(f"""
+        <div class="face-guide-overlay {overlay_class}">
+            <div class="face-oval {overlay_class}">
+                {arrow_html}
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
     
     if ctx.state.playing:
         st.markdown(f"""

@@ -12,8 +12,8 @@ CSS_STYLES = f"""
         font-family: 'Plus Jakarta Sans', sans-serif !important;
     }}
     
-    /* Warm Clean Light Theme Palette */
-    .stApp {{
+    /* Force Light Theme Colors on all Streamlit containers */
+    .stApp, [data-testid="stAppViewContainer"], [data-testid="stHeader"], [data-testid="stSidebar"], .main, [data-testid="stVerticalBlock"] {{
         background-color: #F8FAFC !important;
         color: #0F172A !important;
     }}
@@ -25,113 +25,114 @@ CSS_STYLES = f"""
     
     /* Consumer Card Elements */
     .consumer-card {{
-        background: #FFFFFF;
-        border: 1px solid #E2E8F0;
-        border-radius: 12px;
-        padding: 24px;
-        margin-bottom: 1.5rem;
-        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.02), 0 2px 4px -2px rgba(0, 0, 0, 0.02);
+        background: #FFFFFF !important;
+        border: 1px solid #E2E8F0 !important;
+        border-radius: 12px !important;
+        padding: 24px !important;
+        margin-bottom: 1.5rem !important;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.02), 0 2px 4px -2px rgba(0, 0, 0, 0.02) !important;
+        color: #0F172A !important;
     }}
     
     .consumer-title {{
-        font-size: 1.1rem;
-        font-weight: 700;
-        color: #0F172A;
-        margin-bottom: 0.5rem;
+        font-size: 1.1rem !important;
+        font-weight: 700 !important;
+        color: #0F172A !important;
+        margin-bottom: 0.5rem !important;
     }}
     
     .consumer-sub {{
-        font-size: 0.85rem;
-        color: #64748B;
-        margin-bottom: 1.5rem;
+        font-size: 0.85rem !important;
+        color: #64748B !important;
+        margin-bottom: 1.5rem !important;
     }}
 
     /* Empty/Standby States */
     .clean-empty-state {{
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        padding: 30px 20px;
-        text-align: center;
-        border: 1.5px dashed #CBD5E1;
-        border-radius: 8px;
-        background: #F8FAFC;
-        margin: 10px 0;
+        display: flex !important;
+        flex-direction: column !important;
+        align-items: center !important;
+        justify-content: center !important;
+        padding: 30px 20px !important;
+        text-align: center !important;
+        border: 1.5px dashed #CBD5E1 !important;
+        border-radius: 8px !important;
+        background: #F8FAFC !important;
+        margin: 10px 0 !important;
     }}
     
     .clean-empty-text {{
-        font-size: 0.85rem;
-        color: #64748B;
-        font-weight: 500;
+        font-size: 0.85rem !important;
+        color: #64748B !important;
+        font-weight: 500 !important;
     }}
 
     /* Minimalist Badges */
     .status-badge {{
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        padding: 6px 12px;
-        font-size: 0.75rem;
-        font-weight: 600;
-        border-radius: 20px;
-        border: 1px solid transparent;
+        display: inline-flex !important;
+        align-items: center !important;
+        gap: 6px !important;
+        padding: 6px 12px !important;
+        font-size: 0.75rem !important;
+        font-weight: 600 !important;
+        border-radius: 20px !important;
+        border: 1px solid transparent !important;
     }}
     
     .status-badge.success {{
-        background: #ECFDF5;
-        color: #059669;
-        border-color: #A7F3D0;
+        background: #ECFDF5 !important;
+        color: #059669 !important;
+        border-color: #A7F3D0 !important;
     }}
     
     .status-badge.warning {{
-        background: #FFFBEB;
-        color: #D97706;
-        border-color: #FDE68A;
+        background: #FFFBEB !important;
+        color: #D97706 !important;
+        border-color: #FDE68A !important;
     }}
     
     .status-badge.danger {{
-        background: #FEF2F2;
-        color: #DC2626;
-        border-color: #FCA5A5;
+        background: #FEF2F2 !important;
+        color: #DC2626 !important;
+        border-color: #FCA5A5 !important;
     }}
     
     .status-badge.info {{
-        background: #EFF6FF;
-        color: {PRIMARY_COLOR};
-        border-color: #BFDBFE;
+        background: #EFF6FF !important;
+        color: {PRIMARY_COLOR} !important;
+        border-color: #BFDBFE !important;
     }}
 
     /* Friendly Header Bar */
     .header-bar {{
-        display: flex;
-        align-items: center;
-        gap: 12px;
-        padding: 16px 20px;
-        margin-bottom: 2rem;
-        background: #FFFFFF;
-        border: 1px solid #E2E8F0;
-        border-radius: 8px;
-        box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.01);
+        display: flex !important;
+        align-items: center !important;
+        gap: 12px !important;
+        padding: 16px 20px !important;
+        margin-bottom: 2rem !important;
+        background: #FFFFFF !important;
+        border: 1px solid #E2E8F0 !important;
+        border-radius: 8px !important;
+        box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.01) !important;
     }}
     
     .header-logo {{
-        width: 36px;
-        height: 36px;
-        background: {PRIMARY_COLOR};
-        border-radius: 8px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-weight: 800;
-        color: #FFFFFF;
-        font-size: 1.2rem;
+        width: 36px !important;
+        height: 36px !important;
+        background: {PRIMARY_COLOR} !important;
+        border-radius: 8px !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        font-weight: 800 !important;
+        color: #FFFFFF !important;
+        font-size: 1.2rem !important;
     }}
     
     .header-name {{
-        font-weight: 700;
-        font-size: 1.15rem;
-        color: #0F172A;
+        font-weight: 700 !important;
+        font-size: 1.15rem !important;
+        color: #0F172A !important;
     }}
 
     /* Beautiful Segments for quality profiles */
@@ -170,7 +171,7 @@ CSS_STYLES = f"""
         font-weight: 600 !important;
     }}
 
-    /* Camera relative container & pseudo-element guide overlay */
+    /* Video player container styling */
     .stWebRtcStreamer {{
         position: relative !important;
         width: 100% !important;
@@ -188,21 +189,33 @@ CSS_STYLES = f"""
         border-radius: 12px !important;
     }}
     
-    /* Centered dashed oval overlay directly styled on Streamlit WebRTC container */
-    .stWebRtcStreamer::after {{
-        content: "" !important;
-        position: absolute !important;
-        top: 50% !important;
-        left: 50% !important;
-        transform: translate(-50%, -50%) !important;
+    /* Centered, absolute Face ID guide overlay (sits directly on top of video feed via negative margin) */
+    .face-guide-overlay {{
+        position: relative !important;
+        margin-top: -340px !important; /* Pulls it up exactly over the 340px high video container */
+        height: 340px !important;
+        width: 100% !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        pointer-events: none !important;
+        z-index: 9999 !important;
+    }}
+    
+    .face-oval {{
         width: 180px !important;
         height: 245px !important;
-        border: 3.5px dashed rgba(255, 255, 255, 0.75) !important;
+        border: 3.5px dashed rgba(255, 255, 255, 0.85) !important;
         border-radius: 50% !important;
-        box-shadow: 0 0 0 9999px rgba(15, 23, 42, 0.45) !important;
-        pointer-events: none !important;
-        z-index: 1000 !important;
+        box-shadow: 0 0 0 9999px rgba(15, 23, 42, 0.45) !important; /* Vignette cutout! */
         transition: all 0.3s ease !important;
+        position: relative !important;
+    }}
+    
+    .face-oval.detected {{
+        border-style: solid !important;
+        border-color: #10B981 !important; /* Green */
+        box-shadow: 0 0 0 9999px rgba(15, 23, 42, 0.15) !important;
     }}
 
     /* Friendly Round Buttons */
@@ -232,44 +245,78 @@ CSS_STYLES = f"""
 
     /* Friendly Step Tracker Bar */
     .step-progress-container {{
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        background: #F1F5F9;
-        border-radius: 8px;
-        padding: 12px 20px;
-        margin-bottom: 1.5rem;
+        display: flex !important;
+        justify-content: space-between !important;
+        align-items: center !important;
+        background: #E2E8F0 !important;
+        border-radius: 8px !important;
+        padding: 12px 20px !important;
+        margin-bottom: 1.5rem !important;
     }}
     
     .step-progress-text {{
-        font-size: 0.85rem;
-        font-weight: 600;
-        color: #0F172A;
+        font-size: 0.85rem !important;
+        font-weight: 600 !important;
+        color: #0F172A !important;
     }}
     
     .step-progress-dots {{
-        display: flex;
-        gap: 6px;
+        display: flex !important;
+        gap: 6px !important;
     }}
     
     .step-dot {{
-        width: 8px;
-        height: 8px;
-        border-radius: 50%;
-        background: #CBD5E1;
-        transition: all 0.3s ease;
+        width: 8px !important;
+        height: 8px !important;
+        border-radius: 50% !important;
+        background: #94A3B8 !important;
+        transition: all 0.3s ease !important;
     }}
     
     .step-dot.active {{
-        background: {PRIMARY_COLOR};
-        transform: scale(1.2);
+        background: {PRIMARY_COLOR} !important;
+        transform: scale(1.2) !important;
     }}
     
     .step-dot.completed {{
-        background: #10B981;
+        background: #10B981 !important;
+    }}
+    
+    /* Text Inputs override */
+    div[data-baseweb="input"], input {{
+        background-color: #FFFFFF !important;
+        color: #0F172A !important;
+        border: 1px solid #E2E8F0 !important;
+        border-radius: 6px !important;
+    }}
+    
+    h1, h2, h3, h4, h5, h6, p, span, label, .stMarkdown, .stText, .stCheckbox {{
+        color: #0F172A !important;
     }}
 
-    /* Pulses for alignment arrows */
+    /* Animated arrows for turn prompts */
+    .face-arrow {{
+        position: absolute !important;
+        font-size: 2.2rem !important;
+        color: #3b82f6 !important;
+        font-weight: 700 !important;
+        text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3) !important;
+    }}
+    
+    .face-arrow-left {{
+        top: 50% !important;
+        left: -45px !important;
+        transform: translateY(-50%) !important;
+        animation: guide-pulse-left 0.8s infinite alternate !important;
+    }}
+    
+    .face-arrow-right {{
+        top: 50% !important;
+        right: -45px !important;
+        transform: translateY(-50%) !important;
+        animation: guide-pulse-right 0.8s infinite alternate !important;
+    }}
+
     @keyframes guide-pulse-left {{
         from {{ transform: translateY(-50%) translateX(0); }}
         to {{ transform: translateY(-50%) translateX(-8px); }}
