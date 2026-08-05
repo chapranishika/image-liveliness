@@ -256,7 +256,6 @@ with col_cam:
     st.markdown('<div class="consumer-sub">Align your face inside the dashed area below.</div>', unsafe_allow_html=True)
     
     # 1. Continuous single-camera streamer (lightweight constraints for zero lag)
-    st.markdown('<div class="camera-wrapper">', unsafe_allow_html=True)
     ctx = webrtc_streamer(
         key="shared_webrtc_camera",
         mode=WebRtcMode.SENDRECV,
@@ -264,7 +263,6 @@ with col_cam:
         media_stream_constraints={"video": True, "audio": False},
         async_processing=True
     )
-    st.markdown('</div>', unsafe_allow_html=True) # Close camera-wrapper
     
     # Determine target state for dynamic guide styling
     instructions_text = "Align your face with the guide"
