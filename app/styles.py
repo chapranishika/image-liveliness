@@ -171,51 +171,38 @@ CSS_STYLES = f"""
         font-weight: 600 !important;
     }}
 
-    /* Video player container styling */
-    .stWebRtcStreamer {{
+    /* Video player container styling: target the parent div enclosing the hardware video tag */
+    div:has(> video) {{
         position: relative !important;
         width: 100% !important;
-        height: 340px !important;
         border-radius: 12px !important;
         overflow: hidden !important;
         border: 1px solid #E2E8F0 !important;
         background: #000000 !important;
     }}
     
-    .stWebRtcStreamer video {{
+    div:has(> video) video {{
         width: 100% !important;
         height: 340px !important;
         object-fit: cover !important;
         border-radius: 12px !important;
     }}
     
-    /* Centered, absolute Face ID guide overlay (sits directly on top of video feed via negative margin) */
-    .face-guide-overlay {{
-        position: relative !important;
-        margin-top: -340px !important; /* Pulls it up exactly over the 340px high video container */
-        height: 340px !important;
-        width: 100% !important;
-        display: flex !important;
-        align-items: center !important;
-        justify-content: center !important;
-        pointer-events: none !important;
-        z-index: 9999 !important;
-    }}
-    
-    .face-oval {{
+    /* Centered dashed oval overlay directly styled on Streamlit WebRTC video container */
+    div:has(> video)::after {{
+        content: "" !important;
+        position: absolute !important;
+        top: 50% !important;
+        left: 50% !important;
+        transform: translate(-50%, -50%) !important;
         width: 180px !important;
         height: 245px !important;
-        border: 3.5px dashed rgba(255, 255, 255, 0.85) !important;
+        border: 3.5px dashed rgba(255, 255, 255, 0.8) !important;
         border-radius: 50% !important;
         box-shadow: 0 0 0 9999px rgba(15, 23, 42, 0.45) !important; /* Vignette cutout! */
+        pointer-events: none !important;
+        z-index: 1000 !important;
         transition: all 0.3s ease !important;
-        position: relative !important;
-    }}
-    
-    .face-oval.detected {{
-        border-style: solid !important;
-        border-color: #10B981 !important; /* Green */
-        box-shadow: 0 0 0 9999px rgba(15, 23, 42, 0.15) !important;
     }}
 
     /* Friendly Round Buttons */
@@ -248,7 +235,7 @@ CSS_STYLES = f"""
         display: flex !important;
         justify-content: space-between !important;
         align-items: center !important;
-        background: #E2E8F0 !important;
+        background: #F1F5F9 !important;
         border-radius: 8px !important;
         padding: 12px 20px !important;
         margin-bottom: 1.5rem !important;
@@ -269,7 +256,7 @@ CSS_STYLES = f"""
         width: 8px !important;
         height: 8px !important;
         border-radius: 50% !important;
-        background: #94A3B8 !important;
+        background: #CBD5E1 !important;
         transition: all 0.3s ease !important;
     }}
     
@@ -283,7 +270,7 @@ CSS_STYLES = f"""
     }}
     
     /* Text Inputs override */
-    div[data-baseweb="input"], input {{
+    div[data-baseweb="input"], input, select, div[role="listbox"] {{
         background-color: #FFFFFF !important;
         color: #0F172A !important;
         border: 1px solid #E2E8F0 !important;
@@ -295,28 +282,6 @@ CSS_STYLES = f"""
     }}
 
     /* Animated arrows for turn prompts */
-    .face-arrow {{
-        position: absolute !important;
-        font-size: 2.2rem !important;
-        color: #3b82f6 !important;
-        font-weight: 700 !important;
-        text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3) !important;
-    }}
-    
-    .face-arrow-left {{
-        top: 50% !important;
-        left: -45px !important;
-        transform: translateY(-50%) !important;
-        animation: guide-pulse-left 0.8s infinite alternate !important;
-    }}
-    
-    .face-arrow-right {{
-        top: 50% !important;
-        right: -45px !important;
-        transform: translateY(-50%) !important;
-        animation: guide-pulse-right 0.8s infinite alternate !important;
-    }}
-
     @keyframes guide-pulse-left {{
         from {{ transform: translateY(-50%) translateX(0); }}
         to {{ transform: translateY(-50%) translateX(-8px); }}

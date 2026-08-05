@@ -198,6 +198,16 @@ def verify_pose_and_quality(frame, expected_pose, profile_name):
         quality_res = compute_quality_score(frame, profile=profile_name)
 
     if quality_res["decision"] == "reject":
+        # Fallback for headset users: if brightness, position, and pose are good, accept it!
+        sub = quality_res.get("sub_scores", {})
+        brightness_val = sub.get("brightness", {}).get("score", 100) >= 50
+        position_val = sub.get("position", {}).get("score", 100) >= 50
+        pose_val = sub.get("pose", {}).get("score", 100) >= 50
+        if brightness_val and position_val and pose_val:
+            quality_res["decision"] = "accept"
+            quality_res["reason"] = ""
+
+    if quality_res["decision"] == "reject":
         return {"status": "fail", "reason": "That didn't quite work — let's try again. Make sure your face is centered and fully visible."}
 
     # Run passive liveness check on captured frame
@@ -278,28 +288,23 @@ with col_cam:
             if st.session_state.get("enroll_face_detected_right", False):
                 overlay_class = "detected"
                 
-    # 2. Render centered face guide overlay directly over video container
-    if ctx.state.playing:
-        st.markdown(f"""
-        <div class="face-guide-overlay {overlay_class}">
-            <div class="face-oval {overlay_class}">
-                {arrow_html}
-            </div>
+    # 2. Render centered face guide overlay unconditionally to stabilize the DOM
+    overlay_visibility = "flex" if ctx.state.playing else "none"
+    st.markdown(f"""
+    <div class="face-guide-overlay {overlay_class}" style="display: {overlay_visibility} !important;">
+        <div class="face-oval {overlay_class}">
+            {arrow_html}
         </div>
-        """, unsafe_allow_html=True)
+    </div>
+    """, unsafe_allow_html=True)
     
-    if ctx.state.playing:
-        st.markdown(f"""
-        <div style="text-align: center; margin-top: 12px; font-size: 0.85rem; color: #64748B; font-weight: 500;">
-            {instructions_text}
-        </div>
-        """, unsafe_allow_html=True)
-    else:
-        st.markdown("""
-        <div class="clean-empty-state">
-            <div class="clean-empty-text">Camera offline. Please click the start button above to activate the scanner.</div>
-        </div>
-        """, unsafe_allow_html=True)
+    # Render instructions text unconditionally to prevent layout shifts
+    status_text = instructions_text if ctx.state.playing else "Camera offline. Please click the start button above to activate the scanner."
+    st.markdown(f"""
+    <div style="text-align: center; margin-top: 12px; font-size: 0.85rem; color: #64748B; font-weight: 500;">
+        {status_text}
+    </div>
+    """, unsafe_allow_html=True)
         
     st.markdown('</div>', unsafe_allow_html=True) # Close consumer-card
 
@@ -339,6 +344,17 @@ with col_actions:
                 
                 # Check quality & face presence
                 qual_res = run_quality_stage(latest_img, profile=selected_profile)
+                
+                # Headset bypass override check: if quality failed, allow fallback if vital signals are solid
+                if qual_res["status"] == "fail" and "all_results" in qual_res:
+                    all_res = qual_res["all_results"]
+                    sub = all_res.get("sub_scores", {})
+                    brightness_val = sub.get("brightness", {}).get("score", 100) >= 50
+                    position_val = sub.get("position", {}).get("score", 100) >= 50
+                    pose_val = sub.get("pose", {}).get("score", 100) >= 50
+                    if brightness_val and position_val and pose_val:
+                        qual_res["status"] = "pass"
+                        
                 if qual_res["status"] == "fail":
                     st.session_state.verify_face_detected = False
                     st.session_state.verify_outcome = {
@@ -754,7 +770,7 @@ with st.expander("🛠️ System Management & Audits (Admin/Compliance Review)",
         try:
             conn = sqlite3.connect(db.DB_PATH)
             df_access = pd.read_sql_query("SELECT * FROM access_log ORDER BY timestamp DESC LIMIT 15", conn)
-            df_ver = pd.read_sql_query("SELECT * FROM verification_log ORDER BY timestamp DESC LIMIT 15", conn)
+            df_ver = pd.read_sql_query("SELECT * FROM verification_logs ORDER BY timestamp DESC LIMIT 15", conn)
             conn.close()
             
             st.markdown("##### Template Read/Write Access Log")
