@@ -1,9 +1,23 @@
 # app/styles.py
-# Warm, consumer-grade light styling matching Apple Face ID / modern banking app design.
+# Warm, consumer-grade light and dark themes matching Apple Face ID / modern banking app design.
 
 from app.branding_config import PRIMARY_COLOR, ACCENT_COLOR
 
-CSS_STYLES = f"""
+def get_css_styles(theme_mode="light"):
+    is_dark = (theme_mode == "dark")
+    
+    # Theme color tokens
+    bg_color = "#0F172A" if is_dark else "#F8FAFC"
+    card_bg = "#1E293B" if is_dark else "#FFFFFF"
+    card_border = "#334155" if is_dark else "#E2E8F0"
+    text_color = "#F1F5F9" if is_dark else "#0F172A"
+    subtext_color = "#94A3B8" if is_dark else "#64748B"
+    input_bg = "#1E293B" if is_dark else "#FFFFFF"
+    segment_bg = "#1E293B" if is_dark else "#F1F5F9"
+    progress_bg = "#334155" if is_dark else "#F1F5F9"
+    dot_inactive = "#475569" if is_dark else "#CBD5E1"
+    
+    return f"""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap');
     
@@ -12,10 +26,10 @@ CSS_STYLES = f"""
         font-family: 'Plus Jakarta Sans', sans-serif !important;
     }}
     
-    /* Force Light Theme Colors globally across all elements */
+    /* Force Theme Colors globally across all elements */
     html, body, .stApp, [data-testid="stAppViewContainer"], [data-testid="stHeader"], [data-testid="stSidebar"], .main {{
-        background-color: #F8FAFC !important;
-        color: #0F172A !important;
+        background-color: {bg_color} !important;
+        color: {text_color} !important;
     }}
     
     /* Hide Sidebar Completely */
@@ -25,25 +39,25 @@ CSS_STYLES = f"""
     
     /* Consumer Card Elements */
     .consumer-card {{
-        background: #FFFFFF !important;
-        border: 1px solid #E2E8F0 !important;
+        background: {card_bg} !important;
+        border: 1px solid {card_border} !important;
         border-radius: 12px !important;
         padding: 24px !important;
         margin-bottom: 1.5rem !important;
         box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.02), 0 2px 4px -2px rgba(0, 0, 0, 0.02) !important;
-        color: #0F172A !important;
+        color: {text_color} !important;
     }}
     
     .consumer-title {{
         font-size: 1.1rem !important;
         font-weight: 700 !important;
-        color: #0F172A !important;
+        color: {text_color} !important;
         margin-bottom: 0.5rem !important;
     }}
     
     .consumer-sub {{
         font-size: 0.85rem !important;
-        color: #64748B !important;
+        color: {subtext_color} !important;
         margin-bottom: 1.5rem !important;
     }}
 
@@ -90,8 +104,8 @@ CSS_STYLES = f"""
         gap: 12px !important;
         padding: 16px 20px !important;
         margin-bottom: 2rem !important;
-        background: #FFFFFF !important;
-        border: 1px solid #E2E8F0 !important;
+        background: {card_bg} !important;
+        border: 1px solid {card_border} !important;
         border-radius: 8px !important;
         box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.01) !important;
     }}
@@ -112,15 +126,15 @@ CSS_STYLES = f"""
     .header-name {{
         font-weight: 700 !important;
         font-size: 1.15rem !important;
-        color: #0F172A !important;
+        color: {text_color} !important;
     }}
 
     /* Beautiful Segments for quality profiles */
     div.stRadio > div[role="radiogroup"] {{
         display: flex !important;
         flex-direction: row !important;
-        background: #F1F5F9 !important;
-        border: 1px solid #E2E8F0 !important;
+        background: {segment_bg} !important;
+        border: 1px solid {card_border} !important;
         border-radius: 8px !important;
         padding: 4px !important;
         gap: 4px !important;
@@ -132,7 +146,7 @@ CSS_STYLES = f"""
         background: transparent !important;
         border-radius: 6px !important;
         padding: 6px 12px !important;
-        color: #64748B !important;
+        color: {subtext_color} !important;
         transition: all 0.2s ease !important;
         font-size: 0.8rem !important;
         font-weight: 500 !important;
@@ -151,28 +165,34 @@ CSS_STYLES = f"""
         font-weight: 600 !important;
     }}
 
-    /* Control the camera components size and iframe dimensions directly */
-    iframe[title="streamlit_webrtc.webrtc_streamer"], .stWebRtcStreamer, iframe {{
-        height: 340px !important;
+    /* Stable WebRTC Component container styling */
+    .stWebRtcStreamer {{
         width: 100% !important;
         border-radius: 12px !important;
-        border: 1px solid #E2E8F0 !important;
+        border: 1px solid {card_border} !important;
         overflow: hidden !important;
+        background: #000000 !important;
     }}
     
-    .camera-wrapper {{
+    .stWebRtcStreamer video {{
         width: 100% !important;
-        height: 340px !important;
+        object-fit: cover !important;
         border-radius: 12px !important;
-        overflow: hidden !important;
     }}
 
-    /* Centered dashed oval overlay in parent DOM on top of WebRTC iframe */
-    .face-guide-overlay {{
+    /* Set first column relative to absolute position face guide overlay */
+    [data-testid="column"]:first-child {{
         position: relative !important;
-        margin-top: -340px !important; /* Pull overlay exactly on top of the 340px high camera */
+    }}
+
+    /* Center face guide overlay inside the first column directly over the video stream */
+    .face-guide-overlay {{
+        position: absolute !important;
+        top: 86px !important; /* Starts exactly at the top boundary of the camera card */
+        left: 50% !important;
+        transform: translateX(-50%) !important;
+        width: calc(100% - 48px) !important; /* Accounts for card padding */
         height: 340px !important;
-        width: 100% !important;
         display: flex !important;
         align-items: center !important;
         justify-content: center !important;
@@ -180,20 +200,29 @@ CSS_STYLES = f"""
         z-index: 1000 !important;
     }}
     
-    .face-oval {{
-        width: 180px !important;
-        height: 245px !important;
-        border: 3.5px dashed rgba(255, 255, 255, 0.85) !important;
-        border-radius: 50% !important;
-        box-shadow: 0 0 0 9999px rgba(15, 23, 42, 0.45) !important; /* Vignette cutout */
-        transition: all 0.3s ease !important;
+    .face-svg-container {{
+        width: 185px !important;
+        height: 255px !important;
         position: relative !important;
     }}
     
-    .face-oval.detected {{
-        border-style: solid !important;
-        border-color: #10B981 !important; /* Green */
-        box-shadow: 0 0 0 9999px rgba(15, 23, 42, 0.15) !important;
+    .guide-svg {{
+        width: 100% !important;
+        height: 100% !important;
+    }}
+    
+    /* Head + Neck contour path styling */
+    .guide-path {{
+        fill: none !important;
+        stroke: rgba(255, 255, 255, 0.85) !important;
+        stroke-width: 3.5 !important;
+        stroke-dasharray: 8,6 !important;
+        transition: all 0.3s ease !important;
+    }}
+    
+    .guide-path.detected {{
+        stroke: #10B981 !important; /* Green */
+        stroke-dasharray: none !important;
     }}
 
     /* Friendly Round Buttons */
@@ -226,7 +255,7 @@ CSS_STYLES = f"""
         display: flex !important;
         justify-content: space-between !important;
         align-items: center !important;
-        background: #F1F5F9 !important;
+        background: {progress_bg} !important;
         border-radius: 8px !important;
         padding: 12px 20px !important;
         margin-bottom: 1.5rem !important;
@@ -235,7 +264,7 @@ CSS_STYLES = f"""
     .step-progress-text {{
         font-size: 0.85rem !important;
         font-weight: 600 !important;
-        color: #0F172A !important;
+        color: {text_color} !important;
     }}
     
     .step-progress-dots {{
@@ -247,7 +276,7 @@ CSS_STYLES = f"""
         width: 8px !important;
         height: 8px !important;
         border-radius: 50% !important;
-        background: #CBD5E1 !important;
+        background: {dot_inactive} !important;
         transition: all 0.3s ease !important;
     }}
     
@@ -262,14 +291,14 @@ CSS_STYLES = f"""
     
     /* Input and form controls overrides */
     div[data-baseweb="input"], input, select, div[role="listbox"], button[role="tab"] {{
-        background-color: #FFFFFF !important;
-        color: #0F172A !important;
-        border: 1px solid #E2E8F0 !important;
+        background-color: {input_bg} !important;
+        color: {text_color} !important;
+        border: 1px solid {card_border} !important;
         border-radius: 6px !important;
     }}
     
     h1, h2, h3, h4, h5, h6, p, span, label, .stMarkdown, .stText, .stCheckbox {{
-        color: #0F172A !important;
+        color: {text_color} !important;
     }}
 
     /* Animated arrows for turn prompts */
@@ -283,14 +312,14 @@ CSS_STYLES = f"""
     
     .face-arrow-left {{
         top: 50% !important;
-        left: 20px !important;
+        left: -15px !important;
         transform: translateY(-50%) !important;
         animation: guide-pulse-left 0.8s infinite alternate !important;
     }}
     
     .face-arrow-right {{
         top: 50% !important;
-        right: 20px !important;
+        right: -15px !important;
         transform: translateY(-50%) !important;
         animation: guide-pulse-right 0.8s infinite alternate !important;
     }}

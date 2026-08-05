@@ -33,7 +33,11 @@ db.init_db()
 
 # Page setup
 from app.branding_config import COMPANY_NAME, LOGO_PATH, PRIMARY_COLOR
-from app.styles import CSS_STYLES
+from app.styles import get_css_styles
+
+# Initialize theme state
+if "theme_mode" not in st.session_state:
+    st.session_state.theme_mode = "light"
 
 st.set_page_config(
     page_title=f"{COMPANY_NAME} Authentication",
@@ -41,7 +45,7 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="collapsed"
 )
-st.markdown(CSS_STYLES, unsafe_allow_html=True)
+st.markdown(get_css_styles(st.session_state.theme_mode), unsafe_allow_html=True)
 
 # ---------------------------------------------------------
 # STREAMLIT WEBRTC FRAME GRABBER
@@ -288,7 +292,10 @@ with col_cam:
     # 2. Render centered face guide overlay unconditionally in the parent DOM (always active)
     st.markdown(f"""
     <div class="face-guide-overlay {overlay_class}">
-        <div class="face-oval {overlay_class}">
+        <div class="face-svg-container {overlay_class}">
+            <svg viewBox="0 0 200 280" class="guide-svg">
+                <path class="guide-path {overlay_class}" d="M100,25 C145,25 175,55 175,115 C175,165 155,195 130,210 L130,245 C130,252 140,258 150,262 L50,262 C60,258 70,252 70,245 L70,210 C45,195 25,165 25,115 C25,55 55,25 100,25 Z" />
+            </svg>
             {arrow_html}
         </div>
     </div>
@@ -314,14 +321,29 @@ if ctx.state.playing:
 with col_actions:
     st.markdown('<div class="consumer-card">', unsafe_allow_html=True)
     
-    # Custom high-end segmented tab selection
+    # Custom high-end segmented tab selection with theme mode toggle side-by-side
     st.markdown('<div style="margin-bottom: 1.5rem;">', unsafe_allow_html=True)
-    selected_view = st.radio(
-        "Navigation",
-        options=["Verify Identity", "Guided Enrollment"],
-        label_visibility="collapsed"
-    )
-    st.session_state.active_view = selected_view
+    col_tab_item, col_theme_item = st.columns([0.65, 0.35])
+    with col_tab_item:
+        selected_view = st.radio(
+            "Navigation",
+            options=["Verify Identity", "Guided Enrollment"],
+            label_visibility="collapsed"
+        )
+        st.session_state.active_view = selected_view
+    with col_theme_item:
+        theme_options = ["☀️ Light", "🌙 Dark"]
+        current_theme_idx = 0 if st.session_state.theme_mode == "light" else 1
+        selected_theme = st.selectbox(
+            "Theme Mode Selection",
+            options=theme_options,
+            index=current_theme_idx,
+            label_visibility="collapsed"
+        )
+        new_theme_mode = "light" if "Light" in selected_theme else "dark"
+        if new_theme_mode != st.session_state.theme_mode:
+            st.session_state.theme_mode = new_theme_mode
+            st.rerun()
     st.markdown('</div>', unsafe_allow_html=True)
     
     # ---------------------------------------------------------
