@@ -181,7 +181,7 @@ def explain_quality_failure(failed_reason, all_results=None):
         else:
             st.info("Please make sure you are looking directly at the camera in good lighting.")
 
-def verify_pose_and_quality(frame, expected_pose, profile_name):
+def verify_pose_and_quality(frame, expected_pose, profile_name, check_liveness=False):
     """
     Checks face presence, alignment, and quality.
     Translates all raw technical thresholds/errors into user-friendly instructions.
@@ -252,13 +252,15 @@ def verify_pose_and_quality(frame, expected_pose, profile_name):
     if quality_res["decision"] == "reject":
         return {"status": "fail", "reason": "That didn't quite work — let's try again. Make sure your face is centered and fully visible."}
 
-    # Run passive liveness check on captured frame
-    liveness_res = check_passive_liveness(frame)
-    if liveness_res["status"] == "fail" and profile_name == "lenient":
-        liveness_res["status"] = "pass"
-        
-    if liveness_res["status"] == "fail":
-        return {"status": "fail", "reason": "Biometric check failed. Please ensure you are presenting a live face."}
+    liveness_res = {"status": "pass", "liveness_score": 0.99}
+    if check_liveness:
+        # Run passive liveness check on captured frame
+        liveness_res = check_passive_liveness(frame)
+        if liveness_res["status"] == "fail" and profile_name == "lenient":
+            liveness_res["status"] = "pass"
+            
+        if liveness_res["status"] == "fail":
+            return {"status": "fail", "reason": "Biometric check failed. Please ensure you are presenting a live face."}
 
     return {"status": "pass", "quality_result": quality_res, "liveness_result": liveness_res}
 
@@ -351,7 +353,7 @@ with col_cam:
                 step = st.session_state.get("enroll_step", 1)
                 expected_pose = "front" if step == 1 else ("left" if step == 2 else "right")
                 
-            verify_res = verify_pose_and_quality(latest_img, expected_pose, active_prof)
+            verify_res = verify_pose_and_quality(latest_img, expected_pose, active_prof, check_liveness=False)
             
             if verify_res["status"] == "pass":
                 overlay_class = "success"
@@ -376,24 +378,35 @@ with col_cam:
                 """
                 
                 if elapsed >= 1.5:
-                    st.session_state.countdown_start = None
-                    st.session_state.flash_end_time = time.time() + 0.6
-                    st.session_state.play_sound_trigger = True
-                    
                     if st.session_state.active_view == "Verify Identity":
+                        st.session_state.countdown_start = None
+                        st.session_state.flash_end_time = time.time() + 0.6
+                        st.session_state.play_sound_trigger = True
                         run_verification_logic(latest_img, active_prof)
+                        st.rerun()
                     else:
                         step = st.session_state.get("enroll_step", 1)
-                        if step == 1:
-                            st.session_state.enroll_front = latest_img.copy()
-                            st.session_state.enroll_step = 2
-                        elif step == 2:
-                            st.session_state.enroll_left = latest_img.copy()
-                            st.session_state.enroll_step = 3
-                        elif step == 3:
-                            st.session_state.enroll_right = latest_img.copy()
-                            st.session_state.enroll_step = 4
-                    st.rerun()
+                        # Run strict liveness & quality verification at capture execution moment
+                        check_res = verify_pose_and_quality(latest_img, expected_pose, active_prof, check_liveness=True)
+                        if check_res["status"] == "fail":
+                            st.session_state.countdown_start = None
+                            st.session_state.flash_end_time = None
+                            st.error(check_res["reason"])
+                            time.sleep(1.5)
+                        else:
+                            st.session_state.countdown_start = None
+                            st.session_state.flash_end_time = time.time() + 0.6
+                            st.session_state.play_sound_trigger = True
+                            if step == 1:
+                                st.session_state.enroll_front = latest_img.copy()
+                                st.session_state.enroll_step = 2
+                            elif step == 2:
+                                st.session_state.enroll_left = latest_img.copy()
+                                st.session_state.enroll_step = 3
+                            elif step == 3:
+                                st.session_state.enroll_right = latest_img.copy()
+                                st.session_state.enroll_step = 4
+                            st.rerun()
             else:
                 st.session_state.countdown_start = None
                 reason = verify_res.get("reason", "")
@@ -440,28 +453,33 @@ with col_cam:
         
         # 3. Quiet manual fallback capture button below camera stream
         if ctx.state.playing and not is_flashing:
-            st.markdown("<div style='text-align: center; margin-top: 10px; margin-bottom: 5px;'>", unsafe_allow_html=True)
             if st.button("Having trouble? Tap to capture manually", key="manual_fallback_capture_btn"):
                 if latest_img is not None:
-                    st.session_state.play_sound_trigger = True
-                    st.session_state.flash_end_time = time.time() + 0.6
                     if st.session_state.active_view == "Verify Identity":
+                        st.session_state.play_sound_trigger = True
+                        st.session_state.flash_end_time = time.time() + 0.6
                         run_verification_logic(latest_img, active_prof)
+                        st.rerun()
                     else:
                         step = st.session_state.get("enroll_step", 1)
-                        if step == 1:
-                            st.session_state.enroll_front = latest_img.copy()
-                            st.session_state.enroll_step = 2
-                        elif step == 2:
-                            st.session_state.enroll_left = latest_img.copy()
-                            st.session_state.enroll_step = 3
-                        elif step == 3:
-                            st.session_state.enroll_right = latest_img.copy()
-                            st.session_state.enroll_step = 4
-                    st.rerun()
+                        check_res = verify_pose_and_quality(latest_img, expected_pose, active_prof, check_liveness=True)
+                        if check_res["status"] == "fail":
+                            st.error(check_res["reason"])
+                        else:
+                            st.session_state.play_sound_trigger = True
+                            st.session_state.flash_end_time = time.time() + 0.6
+                            if step == 1:
+                                st.session_state.enroll_front = latest_img.copy()
+                                st.session_state.enroll_step = 2
+                            elif step == 2:
+                                st.session_state.enroll_left = latest_img.copy()
+                                st.session_state.enroll_step = 3
+                            elif step == 3:
+                                st.session_state.enroll_right = latest_img.copy()
+                                st.session_state.enroll_step = 4
+                            st.rerun()
                 else:
                     st.error("Please wait until the camera feed is ready.")
-            st.markdown("</div>", unsafe_allow_html=True)
 
 # Fetch latest_img reference for compatibility with actions column blocks
 latest_img = None
@@ -545,12 +563,10 @@ with col_actions:
                 """, unsafe_allow_html=True)
                 
                 # Add a reset button to allow re-verifying
-                st.markdown("<div style='margin-top: 15px;'>", unsafe_allow_html=True)
                 if st.button("Verify Again", key="reset_verify_outcome_btn"):
                     st.session_state.pop("verify_outcome", None)
                     st.session_state.pop("verify_image", None)
                     st.rerun()
-                st.markdown("</div>", unsafe_allow_html=True)
             else:
                 st.markdown(f"""
                 <div style="margin-top:15px; margin-bottom: 10px;">
