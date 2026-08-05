@@ -305,3 +305,4 @@ CSS_STYLES = f"""
         to {{ transform: translateY(-50%) translateX(8px); }}
     }}
 </style>
+"""
