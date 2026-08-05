@@ -203,8 +203,8 @@ def get_css_styles(theme_mode="light"):
     }}
     
     .face-svg-container {{
-        width: 185px !important;
-        height: 255px !important;
+        width: 245px !important;
+        height: 315px !important;
         position: relative !important;
         display: flex !important;
         align-items: center !important;

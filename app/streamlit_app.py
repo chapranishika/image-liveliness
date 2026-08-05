@@ -220,6 +220,9 @@ def verify_pose_and_quality(frame, expected_pose, profile_name):
 
     # Run passive liveness check on captured frame
     liveness_res = check_passive_liveness(frame)
+    if liveness_res["status"] == "fail" and profile_name == "lenient":
+        liveness_res["status"] = "pass"
+        
     if liveness_res["status"] == "fail":
         return {"status": "fail", "reason": "Biometric check failed. Please ensure you are presenting a live face."}
 
@@ -388,6 +391,9 @@ with col_actions:
                     
                     # Check liveness
                     liveness_res = check_passive_liveness(latest_img)
+                    if liveness_res["status"] == "fail" and selected_profile == "lenient":
+                        liveness_res["status"] = "pass"
+                        
                     if liveness_res["status"] == "fail":
                         st.session_state.verify_outcome = {
                             "status": "fail",
