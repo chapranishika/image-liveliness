@@ -53,13 +53,12 @@ def main():
         "--log-level", "info"
     ]
     print("[Launcher] Starting FastAPI backend on http://127.0.0.1:8000 ...")
+    backend_log = open("backend_server.log", "w", encoding="utf-8", buffering=1)
     backend_proc = subprocess.Popen(
         backend_cmd,
         env=env,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-        bufsize=1
+        stdout=backend_log,
+        stderr=subprocess.STDOUT
     )
 
     # Wait a moment for the backend to bind to the port
@@ -88,9 +87,13 @@ def main():
             if backend_poll is not None:
                 print(f"[Launcher] Error: FastAPI backend exited unexpectedly with code {backend_poll}")
                 # Print some backend stdout/stderr log
-                if backend_proc.stdout:
-                    print("--- Backend Log output ---")
-                    print("".join(backend_proc.stdout.readlines()[-20:]))
+                try:
+                    with open("backend_server.log", "r", encoding="utf-8") as f:
+                        lines = f.readlines()
+                        print("--- Backend Log output ---")
+                        print("".join(lines[-20:]))
+                except Exception:
+                    pass
                 break
                 
             # Check if frontend crashed
@@ -125,6 +128,11 @@ def main():
                 backend_proc.kill()
             except Exception:
                 pass
+
+        try:
+            backend_log.close()
+        except Exception:
+            pass
 
         print("[Launcher] Shutdown complete. Goodbye!")
 

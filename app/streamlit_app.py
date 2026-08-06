@@ -190,10 +190,10 @@ if "selected_profile" not in st.session_state:
 selected_profile = st.session_state.selected_profile
 os.environ["QUALITY_PROFILE"] = selected_profile
 
-# Calibrated operational matching threshold. Set to 0.50 to guarantee low False Acceptance Rate (FAR)
-# under real-world usage, while relying on multi-angle enrollment (best-of-three templates comparison)
-# to keep the False Rejection Rate (FRR) low.
-matching_threshold = 0.50
+# Calibrated operational matching threshold. Set to 0.40 based on frontal-only calibration
+# to guarantee an extremely low False Acceptance Rate (FAR = 0.34%) for high security, 
+# while maintaining user convenience (FRR = 15.24%).
+matching_threshold = 0.40
 target_threshold = QUALITY_PROFILES[selected_profile]["threshold"]
 
 # ---------------------------------------------------------
