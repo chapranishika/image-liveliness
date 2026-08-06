@@ -1,45 +1,74 @@
-# Secure Face Registration and Verification Framework
+# Secure Face Registration and Verification Framework ("Nishika")
 
-This repository implements a secure, modular face registration and verification pipeline with integrated quality assessment and liveness detection.
+This repository implements a production-ready, highly modular face registration and verification pipeline with integrated quality assessment, active/passive liveness detection, AES-128 encryption-at-rest, and GDPR/BIPA compliance features.
 
-## Project Structure
+---
+
+## 🏗️ Project Architecture
 
 ```
 .
 ├── .gitignore
 ├── requirements.txt
-├── setup_folders.py          # Script to establish project directory layout
-├── sanity_check.py           # Verification script for environment dependencies
-├── capture_images.py         # Webcam capture tool with integrated face detector
-├── download_datasets.py      # Downloads CFP and CelebA-Spoof development datasets
+├── setup_folders.py             # Script to establish project directory layout
+├── sanity_check.py              # Verification script for environment dependencies
+├── run_app.py                   # Unified application launcher (FastAPI + Streamlit)
+├── capture_images.py            # Webcam capture tool with integrated face detector
+├── download_datasets.py         # Downloads CFP and CelebA-Spoof development datasets
 ├── src/
 │   ├── __init__.py
-│   ├── quality_checks.py     # Real-time brightness and blur quality checks
-│   ├── liveness_passive.py   # Placeholder for passive liveness checks
-│   ├── liveness_active.py    # Placeholder for active liveness checks
-│   ├── rppg.py               # Placeholder for remote photoplethysmography
-│   ├── face_matching.py      # Placeholder for face verification engine
-│   ├── pipeline.py           # Coordinator pipeline
-│   └── db.py                 # Face enrollment database interface
+│   ├── keys.py                  # Git-ignored secure key loading and auto-generation helper
+│   ├── quality_checks.py        # Real-time brightness and blur quality checks
+│   ├── quality_checks_day8_9.py # Real-time face detection, pose and occlusion checks
+│   ├── quality_score.py         # Multi-profile weighted composite quality score calculator
+│   ├── liveness_passive.py      # Passive spoofing analysis using MiniFASNet
+│   ├── liveness_active.py       # Active liveness blink/yaw challenges
+│   ├── rppg.py                  # Remote photoplethysmography heart-rate checking
+│   ├── face_matching.py         # Cosine-similarity ArcFace matching engine
+│   ├── duplicate_check.py       # 1-to-N registration duplicate check blocker
+│   ├── encryption.py            # AES-128 Fernet database encryption helper
+│   ├── pipeline.py              # Central coordinator pipeline (Verify, Quality, Liveness)
+│   └── db.py                    # Face enrollment database interface with BIPA logging
 ├── api/
 │   ├── __init__.py
-│   └── api.py                # FastAPI endpoints
+│   ├── security.py              # API rate limiting and X-API-Key auth middleware
+│   ├── health.py                # System health check endpoints
+│   └── api.py                   # FastAPI endpoints (register, verify, delete, logs)
 ├── app/
-│   └── streamlit_app.py      # Streamlit demonstration dashboard
-├── data/
-│   ├── celeba_spoof_sample/  # Curated CelebA-Spoof development sample
-│   ├── cfp_sample/           # Curated CFP identity verification sample
-│   └── self_collected/       # User self-collected dataset
-├── logs/
-│   ├── capture_log.csv       # Event log of self-collected frames
-│   └── session_summary.json  # Aggregated counts per capture session
-└── README.md
+│   ├── streamlit_app.py         # Streamlit automated-capture dashboard
+│   └── styles.py                # Elegant custom styling tokens and variables
+├── tests/                       # Pytest verification suite
+│   ├── conftest.py              # Pytest fixtures and mock environments
+│   ├── test_database_and_security.py
+│   ├── test_matching.py
+│   └── test_quality_and_liveness.py
+├── docs/
+│   ├── video_storyboard.md      # Storyboard script for client demonstration video
+│   └── Evaluation_Report.md     # Pipeline thresholds calibration and ROC curves analysis
+└── data/
+    ├── celeba_spoof_sample/     # Curated CelebA-Spoof development sample
+    ├── cfp_sample/              # Curated CFP identity verification sample
+    └── self_collected/          # User self-collected dataset
 ```
 
-## Setup & Running
+---
+
+## 🔒 Security & Key Management
+
+This project enforces strict security practices. Hardcoded keys or credentials are never stored in source code. 
+
+Environment variables are initialized via a `.env` file (which is git-ignored):
+- **`FACE_DB_ENCRYPTION_KEY`**: A base64 32-byte Fernet key used to encrypt biometric template embeddings at rest in the SQLite database.
+- **`FACE_API_KEY`**: A unique token checked in the `X-API-Key` HTTP header of all API calls.
+
+When starting the application using `python run_app.py`, the system automatically checks for a `.env` file. If any key is missing, it **automatically generates secure, random keys**, appends them to `.env`, and outputs them to the console.
+
+---
+
+## 🚀 Setup & Running
 
 ### 1. Create Virtual Environment and Install Libraries
-Ensure you are using **Python 3.11** or **3.10**:
+Ensure you are using **Python 3.10** or **3.11**:
 ```bash
 # Create virtual environment
 py -3.11 -m venv venv
@@ -60,17 +89,28 @@ python setup_folders.py
 python sanity_check.py
 ```
 
-### 3. Self-Data Collection
-To collect your own facial pictures for testing under multiple sessions:
+### 3. Run the Unified Application
+To run both the **FastAPI secure backend** (port `8000`) and the **Streamlit frontend dashboard** (port `8501`) concurrently:
 ```bash
-python capture_images.py --session 1
+python run_app.py
 ```
-Use the following keys on the preview window:
-- **`F`**: Frontal pose (requires exactly 1 face).
-- **`L`**: Left pose (15–35° yaw).
-- **`R`**: Right pose (15–35° yaw).
-- **`B`**: Bad Quality capture (opens terminal submenu to select category: Too Dark, Overexposed, Blur, Extreme Angle, Occlusion).
-- **`A`**: Attack Sample capture (opens terminal submenu to select type: Printed Photo, Screen Replay, Video Replay, Frozen Frame, Multiple Faces).
-- **`Q`**: Exit and output session summary.
+Open your browser at `http://127.0.0.1:8501`.
 
-All events are logged to [logs/capture_log.csv](file:///E:/Projects/ML%20liveliness/logs/capture_log.csv) and [logs/session_summary.json](file:///E:/Projects/ML%20liveliness/logs/session_summary.json).
+---
+
+## 🧪 Testing Suite
+Verify that all database transaction logic, liveness checks, and matching algorithms function correctly by running the pytest suite:
+```bash
+.\venv\Scripts\python.exe -m pytest tests/ -v
+```
+
+---
+
+## ⚙️ Core Operational Flow
+
+1. **Guided Onboarding**: Toggle to **Guided Enrollment**. The dashboard will prompt you to type your name, check the BIPA consent form, and align your face. Automated capture tracks your pose (Front -> Left -> Right) using an OpenCV pixel-burned outline, and triggers a 1.5-second countdown to snapshot automatically.
+2. **Identity Verification**: Toggle to **Verify Identity**. Align your face straight ahead. Once the automated capture acquires the frame, the system checks:
+   - **Quality Score**: Assesses blur, lighting, centering, and pose according to compliance settings.
+   - **Liveness detection**: Runs passive MiniFASNet spoof verification.
+   - **Matching**: Extracts ArcFace embeddings and performs a 1-to-N database lookup at our calibrated threshold of `0.50`.
+3. **GDPR Right to be Forgotten**: Admins can use the **System Management & Audits** console at the bottom of the dashboard to soft-delete or permanently hard-delete user templates from the database.

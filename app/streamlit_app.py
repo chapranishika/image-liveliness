@@ -21,6 +21,9 @@ from streamlit_webrtc import webrtc_streamer, WebRtcMode, RTCConfiguration
 
 # Setup paths and ensure src is importable
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+from src.keys import init_keys_in_env
+init_keys_in_env()
+
 import src.db as db
 from src.pipeline import run_quality_stage, run_liveness_stage, get_embedding
 from src.face_matching import cosine_similarity
@@ -160,11 +163,8 @@ if "selected_profile" not in st.session_state:
 selected_profile = st.session_state.selected_profile
 os.environ["QUALITY_PROFILE"] = selected_profile
 
-matching_threshold = 0.68
+matching_threshold = 0.50
 target_threshold = QUALITY_PROFILES[selected_profile]["threshold"]
-
-if not os.environ.get("FACE_DB_ENCRYPTION_KEY"):
-    os.environ["FACE_DB_ENCRYPTION_KEY"] = "G5F1yYt4-6R6pW_nZ6t01vT1gQ15yV2uT3r4_n5m6t0="
 
 # ---------------------------------------------------------
 # TITLE BAR

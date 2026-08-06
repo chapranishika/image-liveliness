@@ -12,26 +12,17 @@ import subprocess
 import time
 import signal
 
-# Default credentials for local demonstration
-DEFAULT_ENCRYPTION_KEY = "G5F1yYt4-6R6pW_nZ6t01vT1gQ15yV2uT3r4_n5m6t0="
-DEFAULT_API_KEY = "test_developer_api_key_123"
+from src.keys import init_keys_in_env
 
 def main():
     print("=" * 80)
     print("SECURE FACE FRAMEWORK — UNIFIED APPLICATION LAUNCHER")
     print("=" * 80)
 
-    # Initialize environment variables
+    # Initialize environment variables and auto-generate secure local keys if missing
+    init_keys_in_env()
     env = os.environ.copy()
     env["PYTHONPATH"] = "."
-    
-    if not env.get("FACE_DB_ENCRYPTION_KEY"):
-        print(f"[Launcher] Setting default database encryption key: {DEFAULT_ENCRYPTION_KEY}")
-        env["FACE_DB_ENCRYPTION_KEY"] = DEFAULT_ENCRYPTION_KEY
-        
-    if not env.get("FACE_API_KEY"):
-        print(f"[Launcher] Setting default developer API key: {DEFAULT_API_KEY}")
-        env["FACE_API_KEY"] = DEFAULT_API_KEY
 
     # Detect python executable in venv
     python_exe = sys.executable

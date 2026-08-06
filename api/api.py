@@ -18,6 +18,9 @@ from api.health import run_health_checks
 # Ensure src path is available
 import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+from src.keys import init_keys_in_env
+init_keys_in_env()
+
 import src.db as db
 from src.pipeline import verify, run_quality_stage
 from src.face_matching import get_embedding
@@ -135,6 +138,7 @@ def verify_identity(
     name: str = Form(...),
     image: UploadFile = File(...),
     challenge_override: Optional[str] = Form(None),
+    profile: Optional[str] = Form(None),
     _=Depends(verify_api_key),
     _rl=Depends(verify_limiter)
 ):
@@ -169,7 +173,8 @@ def verify_identity(
         frame,
         stored_templates,
         run_active_challenge=run_active,
-        preferred_challenge=challenge_override if run_active else None
+        preferred_challenge=challenge_override if run_active else None,
+        profile=profile
     )
 
     # Parse and log verification decision

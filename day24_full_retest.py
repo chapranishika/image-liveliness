@@ -32,11 +32,11 @@ def main():
     print("Verifying backward compatibility across all historical pipeline tests.")
     print("=" * 90)
 
-    # Initialize environment
+    # Initialize environment and secure local keys
+    from src.keys import init_keys_in_env
+    init_keys_in_env()
     env = os.environ.copy()
     env["PYTHONPATH"] = "."
-    if not env.get("FACE_DB_ENCRYPTION_KEY"):
-        env["FACE_DB_ENCRYPTION_KEY"] = "G5F1yYt4-6R6pW_nZ6t01vT1gQ15yV2uT3r4_n5m6t0="
 
     results = []
     
