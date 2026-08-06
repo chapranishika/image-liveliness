@@ -16,6 +16,7 @@ import threading
 import time
 from PIL import Image
 import io
+import av
 from streamlit_webrtc import webrtc_streamer, WebRtcMode, RTCConfiguration
 
 # Setup paths and ensure src is importable
@@ -86,12 +87,63 @@ class FrameGrabber:
     def __init__(self):
         self.frame_lock = threading.Lock()
         self.latest_frame = None
+        self.guide_state = "neutral"
+        self.guide_arrow = "none"
+        self.guide_pct = 0.0
 
     def video_frame_callback(self, frame):
         img = frame.to_ndarray(format="bgr24")
         with self.frame_lock:
-            self.latest_frame = img
-        return frame
+            self.latest_frame = img.copy()
+            state = self.guide_state
+            arrow = self.guide_arrow
+            pct = self.guide_pct
+            
+        annotated = img.copy()
+        height, width, _ = annotated.shape
+        center_x = width // 2
+        center_y = height // 2
+        
+        # Guide oval proportions matching standard face bounds
+        axes = (int(width * 0.22), int(height * 0.36))
+        center = (center_x, center_y)
+        
+        # Map state to BGR color
+        if state == "success":
+            color = (129, 185, 16)      # Green
+        elif state == "warning":
+            color = (11, 148, 245)      # Amber
+        else:
+            color = (180, 160, 140)     # Neutral Gray
+            
+        # Draw head oval guide
+        cv2.ellipse(annotated, center, axes, 0, 0, 360, color, thickness=3, lineType=cv2.LINE_AA)
+        
+        # Draw neck guidelines (connecting oval bottom to shoulders)
+        left_start = (int(center_x - axes[0] * 0.5), int(center_y + axes[1] * 0.82))
+        left_end = (int(center_x - axes[0] * 0.9), int(center_y + axes[1] * 1.15))
+        right_start = (int(center_x + axes[0] * 0.5), int(center_y + axes[1] * 0.82))
+        right_end = (int(center_x + axes[0] * 0.9), int(center_y + axes[1] * 1.15))
+        
+        cv2.line(annotated, left_start, left_end, color, thickness=3, lineType=cv2.LINE_AA)
+        cv2.line(annotated, right_start, right_end, color, thickness=3, lineType=cv2.LINE_AA)
+        
+        # Draw turn arrows if prompt matches
+        if arrow == "left":
+            start_pt = (center_x + axes[0] + 55, center_y)
+            end_pt = (center_x + axes[0] + 15, center_y)
+            cv2.arrowedLine(annotated, start_pt, end_pt, color, thickness=4, tipLength=0.3, lineType=cv2.LINE_AA)
+        elif arrow == "right":
+            start_pt = (center_x - axes[0] - 55, center_y)
+            end_pt = (center_x - axes[0] - 15, center_y)
+            cv2.arrowedLine(annotated, start_pt, end_pt, color, thickness=4, tipLength=0.3, lineType=cv2.LINE_AA)
+            
+        # Draw green progress countdown arc if counting down
+        if pct > 0.0:
+            rad = axes[0] + 18
+            cv2.ellipse(annotated, center, (rad, rad), 0, -90, int(-90 + 360 * pct), (129, 185, 16), thickness=4, lineType=cv2.LINE_AA)
+            
+        return av.VideoFrame.from_ndarray(annotated, format="bgr24")
 
 # Initialize single global FrameGrabber to share camera across verify/enroll
 if "grabber" not in st.session_state:
@@ -416,17 +468,12 @@ with col_cam:
             mode=WebRtcMode.SENDRECV,
             video_frame_callback=st.session_state.grabber.video_frame_callback,
             media_stream_constraints={"video": True, "audio": False},
-            async_processing=True,
-            rtc_configuration=RTCConfiguration(
-                {"iceServers": [{"urls": ["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302"]}]}
-            )
+            async_processing=True
         )
         
         # Determine target state for dynamic guide styling
         instructions_text = "Align your face with the guide"
         overlay_class = ""
-        arrow_html = ""
-        progress_ring_svg = ""
         
         # Determine active profile settings
         active_prof = st.session_state.get("selected_profile", "balanced")
@@ -438,14 +485,6 @@ with col_cam:
                 is_flashing = True
                 overlay_class = "success"
                 instructions_text = "Captured!"
-                progress_ring_svg = """
-                <path d="M75,140 L95,160 L125,120" 
-                      fill="none" 
-                      stroke="#10B981" 
-                      stroke-width="8" 
-                      stroke-linecap="round" 
-                      stroke-linejoin="round" />
-                """
             else:
                 st.session_state.flash_end_time = None
                 
@@ -484,20 +523,6 @@ with col_cam:
                     
                 elapsed = time.time() - st.session_state.countdown_start
                 instructions_text = f"Hold still... {max(0.0, 1.5 - elapsed):.1f}s"
-                
-                # SVG Countdown circular progress ring
-                pct = min(1.0, elapsed / 1.5)
-                dashoffset = int(534 * (1.0 - pct))
-                progress_ring_svg = f"""
-                <circle cx="100" cy="140" r="85" 
-                        fill="none" 
-                        stroke="#10B981" 
-                        stroke-width="6" 
-                        stroke-dasharray="534" 
-                        stroke-dashoffset="{dashoffset}" 
-                        stroke-linecap="round" 
-                        transform="rotate(-90 100 140)" />
-                """
                 
                 if elapsed >= 1.5:
                     if st.session_state.active_view == "Verify Identity":
@@ -539,32 +564,31 @@ with col_cam:
                     overlay_class = "warning"
                     instructions_text = reason
                     
-        # Apply arrow cues to guide enrollment turns
-        if st.session_state.active_view == "Guided Enrollment" and not is_flashing:
-            step = st.session_state.get("enroll_step", 1)
-            if step == 2:
-                arrow_html = '<div class="face-arrow face-arrow-left">←</div>'
-            elif step == 3:
-                arrow_html = '<div class="face-arrow face-arrow-right">→</div>'
-                
+        # Update thread-safe grabber drawing parameters
+        with st.session_state.grabber.frame_lock:
+            st.session_state.grabber.guide_state = "success" if overlay_class == "success" else ("warning" if overlay_class == "warning" else "neutral")
+            
+            arrow_state = "none"
+            if st.session_state.active_view == "Guided Enrollment" and not is_flashing:
+                step = st.session_state.get("enroll_step", 1)
+                if step == 2:
+                    arrow_state = "left"
+                elif step == 3:
+                    arrow_state = "right"
+            st.session_state.grabber.guide_arrow = arrow_state
+            
+            pct_val = 0.0
+            if overlay_class == "success" and not is_flashing:
+                if "countdown_start" in st.session_state and st.session_state.countdown_start is not None:
+                    elapsed = time.time() - st.session_state.countdown_start
+                    pct_val = min(1.0, elapsed / 1.5)
+            st.session_state.grabber.guide_pct = pct_val
+            
         # Play quiet success beep if triggered
         if st.session_state.get("play_sound_trigger", False):
             st.session_state.play_sound_trigger = False
             st.markdown(f'<audio autoplay src="{BEEP_DATA_URI}" style="display:none;"></audio>', unsafe_allow_html=True)
             
-        # 2. Render centered face guide overlay unconditionally in the parent DOM (always active)
-        st.markdown(f"""
-        <div class="face-guide-overlay {overlay_class}">
-            <div class="face-svg-container {overlay_class}">
-                <svg viewBox="0 0 200 280" class="guide-svg">
-                    <path class="guide-path {overlay_class}" d="M100,25 C145,25 175,55 175,115 C175,165 155,195 130,210 L130,245 C130,252 140,258 150,262 L50,262 C60,258 70,252 70,245 L70,210 C45,195 25,165 25,115 C25,55 55,25 100,25 Z" />
-                    {progress_ring_svg}
-                </svg>
-                {arrow_html}
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
-        
         # Render instructions text with soft slide/fade transition container
         status_text = instructions_text if ctx.state.playing else "Camera offline. Please click the start button above to activate the scanner."
         st.markdown(f"""
@@ -946,34 +970,38 @@ with st.expander("🛠️ System Management & Audits (Admin/Compliance Review)",
             st.error(f"Could not load audit logs: {str(e)}")
 
     st.markdown("---")
-    st.markdown("#### System Health Checks")
-
-    from api.health import check_database, check_encryption_key, check_deepface_model_cache, check_camera_available
-    
-    db_res = check_database()
-    enc_res = check_encryption_key()
-    mod_res = check_deepface_model_cache()
-    cam_res = check_camera_available()
-    
-    db_ok = (db_res["status"] == "pass")
-    db_msg = db_res["detail"] if db_res["detail"] else "Successfully connected to SQLite database."
-    
-    enc_ok = (enc_res["status"] == "pass")
-    enc_msg = enc_res["detail"] if enc_res["detail"] else "Biometric encryption key loaded successfully."
-    
-    mod_ok = (mod_res["status"] == "pass")
-    mod_msg = mod_res["detail"] if mod_res["detail"] else "All required face detection models are cached."
-    
-    cam_ok = (cam_res["status"] in ["pass", "warn"])
-    cam_msg = cam_res["detail"] if cam_res["detail"] else "OS Camera Capture device is ready."
-
-    col_h1, col_h2 = st.columns(2)
-    with col_h1:
-        st.markdown(f"**SQLite Database**: {'✓ PASS' if db_ok else '✗ FAIL'} ({db_msg})")
-        st.markdown(f"**AES-128 Encryption**: {'✓ PASS' if enc_ok else '✗ FAIL'} ({enc_msg})")
-    with col_h2:
-        st.markdown(f"**Models Cached**: {'✓ PASS' if mod_ok else '✗ FAIL'} ({mod_msg})")
-        st.markdown(f"**Camera Ready**: {'✓ PASS' if cam_ok else '✗ FAIL'} ({cam_msg})")
+    st.markdown("#### System Diagnostics & Health Status")
+    if "health_check_results" not in st.session_state:
+        st.session_state.health_check_results = None
+        
+    if st.button("Run System Diagnostics & Health Checks", key="run_diagnostics_btn"):
+        from api.health import check_database, check_encryption_key, check_deepface_model_cache, check_camera_available
+        with st.spinner("Evaluating system component readiness..."):
+            db_res = check_database()
+            enc_res = check_encryption_key()
+            mod_res = check_deepface_model_cache()
+            cam_res = check_camera_available()
+            
+            st.session_state.health_check_results = {
+                "db_ok": (db_res["status"] == "pass"),
+                "db_msg": db_res["detail"] if db_res["detail"] else "Successfully connected to SQLite database.",
+                "enc_ok": (enc_res["status"] == "pass"),
+                "enc_msg": enc_res["detail"] if enc_res["detail"] else "Biometric encryption key loaded successfully.",
+                "mod_ok": (mod_res["status"] == "pass"),
+                "mod_msg": mod_res["detail"] if mod_res["detail"] else "All required face detection models are cached.",
+                "cam_ok": (cam_res["status"] in ["pass", "warn"]),
+                "cam_msg": cam_res["detail"] if cam_res["detail"] else "OS Camera Capture device is ready."
+            }
+            
+    if st.session_state.health_check_results is not None:
+        r = st.session_state.health_check_results
+        col_h1, col_h2 = st.columns(2)
+        with col_h1:
+            st.markdown(f"**SQLite Database**: {'✓ PASS' if r['db_ok'] else '✗ FAIL'} ({r['db_msg']})")
+            st.markdown(f"**AES-128 Encryption**: {'✓ PASS' if r['enc_ok'] else '✗ FAIL'} ({r['enc_msg']})")
+        with col_h2:
+            st.markdown(f"**Models Cached**: {'✓ PASS' if r['mod_ok'] else '✗ FAIL'} ({r['mod_msg']})")
+            st.markdown(f"**Camera Ready**: {'✓ PASS' if r['cam_ok'] else '✗ FAIL'} ({r['cam_msg']})")
 
 # ---------------------------------------------------------
 # ACTIVE RERUN TRIGGER LOOP
