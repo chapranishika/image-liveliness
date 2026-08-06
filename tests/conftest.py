@@ -18,9 +18,11 @@ from src import db
 
 @pytest.fixture(scope="session", autouse=True)
 def configure_env():
-    """Sets default environment variables required by components."""
-    os.environ["FACE_DB_ENCRYPTION_KEY"] = "t-9f8K_jF9t01vT1gQ15yV2uT3r4_n5m6t01vT1gQ15="
-    os.environ["FACE_API_KEY"] = "mock_test_developer_api_key_54321"
+    """Sets default environment variables dynamically for testing session."""
+    from src.encryption import generate_new_key
+    import secrets
+    os.environ["FACE_DB_ENCRYPTION_KEY"] = generate_new_key()
+    os.environ["FACE_API_KEY"] = f"test_api_key_{secrets.token_hex(16)}"
 
 @pytest.fixture
 def genuine_front_image():

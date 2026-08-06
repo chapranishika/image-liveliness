@@ -12,15 +12,32 @@ import subprocess
 import time
 import signal
 
-from src.keys import init_keys_in_env
+from src.keys import load_env_file
 
 def main():
     print("=" * 80)
     print("SECURE FACE FRAMEWORK — UNIFIED APPLICATION LAUNCHER")
     print("=" * 80)
 
-    # Initialize environment variables and auto-generate secure local keys if missing
-    init_keys_in_env()
+    # Load local environment variables from .env
+    load_env_file()
+
+    # Verify required environment variables are set
+    missing_vars = []
+    if not os.environ.get("FACE_DB_ENCRYPTION_KEY"):
+        missing_vars.append("FACE_DB_ENCRYPTION_KEY")
+    if not os.environ.get("FACE_API_KEY"):
+        missing_vars.append("FACE_API_KEY")
+
+    if missing_vars:
+        print(f"\n[Error] Required environment variable(s) not set: {', '.join(missing_vars)}")
+        print("\nPlease configure these variables in a local '.env' file in the project root.")
+        print("You can copy '.env.example' to '.env' and populate it with new secure keys:")
+        print("  1. Generate a new database encryption key: python -c \"from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())\"")
+        print("  2. Generate a new API key: python -c \"import secrets; print(secrets.token_urlsafe(32))\"")
+        print("\nDO NOT commit '.env' to git history.")
+        sys.exit(1)
+
     env = os.environ.copy()
     env["PYTHONPATH"] = "."
 

@@ -21,8 +21,35 @@ from streamlit_webrtc import webrtc_streamer, WebRtcMode, RTCConfiguration
 
 # Setup paths and ensure src is importable
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
-from src.keys import init_keys_in_env
-init_keys_in_env()
+from src.keys import load_env_file
+load_env_file()
+
+# Enforce strict key checks in UI
+missing_vars = []
+if not os.environ.get("FACE_DB_ENCRYPTION_KEY"):
+    missing_vars.append("FACE_DB_ENCRYPTION_KEY")
+if not os.environ.get("FACE_API_KEY"):
+    missing_vars.append("FACE_API_KEY")
+
+if missing_vars:
+    import streamlit as st
+    st.error("### 🔴 System Configuration Error")
+    st.markdown(f"Required environment variable(s) not set: **{', '.join(missing_vars)}**")
+    st.markdown("""
+    Please configure these variables in a local `.env` file in the project root.
+    
+    1. Generate a database encryption key:
+       ```bash
+       python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+       ```
+    2. Generate an API key:
+       ```bash
+       python -c "import secrets; print(secrets.token_urlsafe(32))"
+       ```
+    
+    *Do not commit your `.env` file to git history.*
+    """)
+    st.stop()
 
 import src.db as db
 from src.pipeline import run_quality_stage, run_liveness_stage, get_embedding

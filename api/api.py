@@ -18,8 +18,18 @@ from api.health import run_health_checks
 # Ensure src path is available
 import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
-from src.keys import init_keys_in_env
-init_keys_in_env()
+from src.keys import load_env_file
+load_env_file()
+
+# Enforce strict key checks in API
+missing_vars = []
+if not os.environ.get("FACE_DB_ENCRYPTION_KEY"):
+    missing_vars.append("FACE_DB_ENCRYPTION_KEY")
+if not os.environ.get("FACE_API_KEY"):
+    missing_vars.append("FACE_API_KEY")
+
+if missing_vars:
+    raise RuntimeError(f"Required environment variable(s) not set: {', '.join(missing_vars)}. Please configure them in a local .env file.")
 
 import src.db as db
 from src.pipeline import verify, run_quality_stage
