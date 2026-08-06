@@ -153,15 +153,11 @@ def verify(frame, stored_templates, run_active_challenge=True, match_threshold=0
 
         Capture -> Quality -> Liveness -> Face Embedding -> Match -> Accept/Reject
 
-    stored_templates is a dict like:
-        {"front": embedding_front, "left": embedding_left, "right": embedding_right}
-    normally fetched from SQLite for a claimed identity (Day 16 wires this
-    to the actual database; today it is passed in directly so this function
-    can be tested standalone first).
-
-    This is the FIRST point in the whole project where every previous day's
-    work runs together in one call: Day 7-9 quality, Day 10 passive liveness,
-    Day 11 active liveness, and Day 15's new matching step.
+    stored_templates can be:
+        1. A dict for a single user (1-to-1 verification):
+           {"front": embedding_front, "left": embedding_left, "right": embedding_right}
+        2. A nested dict of multiple users (1-to-N identification):
+           {user_id_or_name: {"front": emb, "left": emb, "right": emb}}
     """
     stage_result = run_quality_and_liveness_stage(
         frame, run_active_challenge=run_active_challenge, preferred_challenge=preferred_challenge, profile=profile
@@ -183,13 +179,41 @@ def verify(frame, stored_templates, run_active_challenge=True, match_threshold=0
             "match_result": None,
         }
 
-    match_result = match_against_templates(
-        embedding_result["embedding"], stored_templates, threshold=match_threshold
-    )
+    live_emb = embedding_result["embedding"]
 
-    return {
-        "verified": match_result["status"] == "accept",
-        "rejected_at_stage": None if match_result["status"] == "accept" else "matching",
-        "detail": stage_result,
-        "match_result": match_result,
-    }
+    # Detect if we have a nested dictionary of multiple users or a single user
+    is_multi_user = False
+    if stored_templates:
+        first_val = next(iter(stored_templates.values()))
+        if isinstance(first_val, dict):
+            is_multi_user = True
+
+    if not is_multi_user:
+        match_result = match_against_templates(
+            live_emb, stored_templates, threshold=match_threshold
+        )
+        return {
+            "verified": match_result["status"] == "accept",
+            "rejected_at_stage": None if match_result["status"] == "accept" else "matching",
+            "detail": stage_result,
+            "match_result": match_result,
+        }
+    else:
+        best_user = None
+        best_match_result = {"status": "reject", "best_score": -1.0}
+        
+        for user_key, templates in stored_templates.items():
+            res = match_against_templates(live_emb, templates, threshold=match_threshold)
+            if res["status"] == "accept" or res["best_score"] is not None:
+                if res["best_score"] > best_match_result["best_score"]:
+                    best_match_result = res
+                    best_user = user_key
+                    
+        verified = best_match_result["status"] == "accept"
+        return {
+            "verified": verified,
+            "rejected_at_stage": None if verified else "matching",
+            "detail": stage_result,
+            "match_result": best_match_result,
+            "matched_user": best_user,
+        }

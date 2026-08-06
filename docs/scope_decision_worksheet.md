@@ -31,7 +31,7 @@ These are production-grade engineering improvements added during development. Th
 | **API Auth & Rate Limiter** | API-Key + Sliding Window | Completed (Day 27/29) | **FREEZE** | Fully operational security gateway. Further auth features (OAuth, JWT) should be deferred. |
 | **Dependency Health Checks** | `/health` gateway | Completed (Day 29) | **KEEP** | Essential operational metric for demo/verification tab diagnostics. Keep active. |
 | **Accessibility Overrides** | `run_active_challenge=False` | Completed (Day 31) | **FREEZE** | Core motor-impairment bypass loops are built and verified. Freeze logic. |
-| **rPPG Physiological Check** | MediaPipe FFT peaks | Completed (Days 19-20) | **FREEZE** | Heart-rate pulse check is calibrated and verified. Freeze logic. |
+| **rPPG Physiological Check** | MediaPipe FFT peaks | Completed (Days 19-20) | **DEFER** | Heart-rate pulse check is implemented as an offline evaluation module. Deferred from live execution pipeline (UI/API) due to multi-frame buffering complexity. |
 
 ---
 
