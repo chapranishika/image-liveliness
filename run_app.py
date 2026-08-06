@@ -37,6 +37,29 @@ def warm_up_frontend(url="http://127.0.0.1:8501", timeout_seconds=45):
     return False
 
 
+def kill_processes_on_ports(ports=[8000, 8501]):
+    """
+    Self-healing utility to scan local ports and terminate any orphaned
+    processes, preventing bind exceptions on subsequent launches.
+    """
+    import re
+    for port in ports:
+        try:
+            output = subprocess.check_output(f"netstat -ano | findstr :{port}", shell=True).decode()
+            pids = set()
+            for line in output.strip().split("\n"):
+                if "LISTENING" in line or "ESTABLISHED" in line:
+                    parts = re.split(r'\s+', line.strip())
+                    if len(parts) >= 5:
+                        pids.add(parts[-1])
+            for pid in pids:
+                if pid != "0" and pid.isdigit():
+                    print(f"[Launcher] Port {port} is occupied by PID {pid}. Terminating process...")
+                    subprocess.run(f"taskkill /F /PID {pid}", shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except Exception:
+            pass
+
+
 def main():
     # Redirected output (e.g. via Start-Process) is fully buffered by default,
     # which delays every print below until process exit -- reconfigure so
@@ -45,6 +68,9 @@ def main():
     print("=" * 80)
     print("SECURE FACE FRAMEWORK — UNIFIED APPLICATION LAUNCHER")
     print("=" * 80)
+    
+    # Self-healing: clean up ports 8000 and 8501
+    kill_processes_on_ports([8000, 8501])
 
     # Load local environment variables from .env
     load_env_file()
