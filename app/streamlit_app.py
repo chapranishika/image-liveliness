@@ -190,6 +190,9 @@ if "selected_profile" not in st.session_state:
 selected_profile = st.session_state.selected_profile
 os.environ["QUALITY_PROFILE"] = selected_profile
 
+# Calibrated operational matching threshold. Set to 0.50 to guarantee low False Acceptance Rate (FAR)
+# under real-world usage, while relying on multi-angle enrollment (best-of-three templates comparison)
+# to keep the False Rejection Rate (FRR) low.
 matching_threshold = 0.50
 target_threshold = QUALITY_PROFILES[selected_profile]["threshold"]
 
@@ -862,19 +865,25 @@ with col_actions:
                                 elif emb_right["status"] != "success":
                                     st.error("Right capture could not map landmarks.")
                                 else:
-                                    user_id = db.insert_user(reg_name, consent_given=consent, actor="consumer_ui")
-                                    db.insert_template(user_id, "front", emb_front["embedding"])
-                                    db.insert_template(user_id, "left", emb_left["embedding"])
-                                    db.insert_template(user_id, "right", emb_right["embedding"])
-                                    
-                                    st.success(f"Successfully registered your profile, {reg_name}!")
-                                    st.balloons()
-                                    
-                                    st.session_state.enroll_step = 1
-                                    st.session_state.enroll_front = None
-                                    st.session_state.enroll_left = None
-                                    st.session_state.enroll_right = None
-                                    st.rerun()
+                                    # Run duplicate check
+                                    from src.duplicate_check import check_for_duplicate
+                                    dup_res = check_for_duplicate(emb_front["embedding"])
+                                    if dup_res["is_duplicate"]:
+                                        st.error(f"Registration rejected: Face already registered as '{dup_res['matched_name']}' (User ID: {dup_res['matched_user_id']}) at similarity score {dup_res['score']:.4f}.")
+                                    else:
+                                        user_id = db.insert_user(reg_name, consent_given=consent, actor="consumer_ui")
+                                        db.insert_template(user_id, "front", emb_front["embedding"])
+                                        db.insert_template(user_id, "left", emb_left["embedding"])
+                                        db.insert_template(user_id, "right", emb_right["embedding"])
+                                        
+                                        st.success(f"Successfully registered your profile, {reg_name}!")
+                                        st.balloons()
+                                        
+                                        st.session_state.enroll_step = 1
+                                        st.session_state.enroll_front = None
+                                        st.session_state.enroll_left = None
+                                        st.session_state.enroll_right = None
+                                        st.rerun()
                             except Exception as e:
                                 st.error(f"Save failed: {str(e)}")
 

@@ -22,8 +22,7 @@ DOCUMENT_PATHS = [
     os.path.abspath("README.md"),
     os.path.abspath("data/Evaluation_Report.md"),
     os.path.abspath("Full_Approach_Design_Document_v2.docx"),
-    os.path.abspath("docs/Secure_Face_Framework_Calibration_Report.pdf"),
-    os.path.abspath(r"C:\Users\chapr\.gemini\antigravity\brain\cdb6da55-eccf-4c19-a755-1b04570913ff\walkthrough.md")
+    os.path.abspath("docs/Secure_Face_Framework_Calibration_Report.pdf")
 ]
 
 # Patterns designed to capture stale phrasings and placeholders

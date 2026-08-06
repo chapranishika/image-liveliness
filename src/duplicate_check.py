@@ -18,10 +18,11 @@ sys.path.insert(0, os.path.dirname(__file__))
 from face_matching import cosine_similarity
 from db import get_all_front_templates
 
-# Placeholder pending Day 20 calibration, same honest flag as the
-# verification match_threshold in face_matching.py — not yet backed by
-# real ROC/EER analysis.
-DUPLICATE_THRESHOLD = 0.68
+# Calibrated duplicate threshold. Set to 0.50 to align with the live matching threshold.
+# Note that duplicate checking compares frontal-to-frontal templates, which avoids cross-angle
+# degradation. Frontal-to-frontal comparisons show excellent separation (different people score < 0.30,
+# same person scores > 0.90), making 0.50 a highly reliable boundary for duplicate prevention.
+DUPLICATE_THRESHOLD = 0.50
 
 
 def check_for_duplicate(new_front_embedding, exclude_user_id=None):

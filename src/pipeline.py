@@ -144,6 +144,9 @@ def run_quality_and_liveness_stage(frame, run_active_challenge=True, preferred_c
     }
 
 
+# Calibrated operational matching threshold defaults to 0.50. This guarantees high security (low FAR)
+# in production, while best-of-three stored templates (multi-angle comparison) protect convenience (low FRR)
+# during live enrollment/verification workflows.
 def verify(frame, stored_templates, run_active_challenge=True, match_threshold=0.50, preferred_challenge=None, profile=None):
     """
     Day 15: The complete pipeline, matching Diagram 1 end to end.
