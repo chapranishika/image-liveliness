@@ -43,6 +43,39 @@ def ensure_models_exist():
 _DETECTOR_CACHE = {}
 _LANDMARKER_CACHE = {}
 
+_DETECTION_CACHE_INSTANCE = {}
+_LANDMARKER_CACHE_INSTANCE = {}
+_LAST_FRAME_REF = None
+
+def clear_frame_cache_if_new(image):
+    global _LAST_FRAME_REF, _DETECTION_CACHE_INSTANCE, _LANDMARKER_CACHE_INSTANCE
+    if image is not _LAST_FRAME_REF:
+        _LAST_FRAME_REF = image
+        _DETECTION_CACHE_INSTANCE.clear()
+        _LANDMARKER_CACHE_INSTANCE.clear()
+
+def get_cached_detections(image, min_confidence=0.5):
+    clear_frame_cache_if_new(image)
+    key = min_confidence
+    if key not in _DETECTION_CACHE_INSTANCE:
+        h, w = image.shape[:2]
+        rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=np.ascontiguousarray(rgb))
+        detector = get_detector(min_confidence)
+        _DETECTION_CACHE_INSTANCE[key] = detector.detect(mp_image)
+    return _DETECTION_CACHE_INSTANCE[key]
+
+def get_cached_landmarks(image, min_confidence=0.5):
+    clear_frame_cache_if_new(image)
+    key = min_confidence
+    if key not in _LANDMARKER_CACHE_INSTANCE:
+        h, w = image.shape[:2]
+        rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=np.ascontiguousarray(rgb))
+        landmarker = get_landmarker(min_confidence)
+        _LANDMARKER_CACHE_INSTANCE[key] = landmarker.detect(mp_image)
+    return _LANDMARKER_CACHE_INSTANCE[key]
+
 def get_detector(min_confidence=0.5):
     ensure_models_exist()
     if min_confidence not in _DETECTOR_CACHE:
@@ -107,12 +140,7 @@ def check_single_face(image, min_confidence=0.5):
     """
     Counts detected faces. Returns pass only when exactly one face is found.
     """
-    h, w = image.shape[:2]
-    rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-    mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=np.ascontiguousarray(rgb))
-    
-    detector = get_detector(min_confidence)
-    results = detector.detect(mp_image)
+    results = get_cached_detections(image, min_confidence)
     
     count = len(results.detections) if results.detections else 0
 
@@ -142,11 +170,7 @@ def check_pose(image):
     corners) to compute real yaw/pitch/roll in degrees.
     """
     h, w = image.shape[:2]
-    rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-    mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=np.ascontiguousarray(rgb))
-    
-    landmarker = get_landmarker()
-    results = landmarker.detect(mp_image)
+    results = get_cached_landmarks(image)
 
     if not results.face_landmarks:
         return {"check": "pose", "status": "fail", "reason": "no face detected"}
@@ -220,11 +244,7 @@ def check_position(image, min_confidence=0.5):
     and does it occupy enough of the frame.
     """
     h, w = image.shape[:2]
-    rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-    mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=np.ascontiguousarray(rgb))
-    
-    detector = get_detector(min_confidence)
-    results = detector.detect(mp_image)
+    results = get_cached_detections(image, min_confidence)
 
     if not results.detections:
         return {"check": "position", "status": "fail", "reason": "no face detected"}
@@ -263,11 +283,7 @@ def check_resolution(image, min_confidence=0.5):
     enough real pixel detail for reliable matching; this catches that
     case directly rather than through the area-ratio proxy.
     """
-    rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-    mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=np.ascontiguousarray(rgb))
-
-    detector = get_detector(min_confidence)
-    results = detector.detect(mp_image)
+    results = get_cached_detections(image, min_confidence)
 
     if not results.detections:
         return {"check": "resolution", "status": "fail", "reason": "no face detected"}
@@ -293,19 +309,14 @@ def check_occlusion(image, min_confidence=0.5):
     unusually flat compared to the rest of the face.
     """
     h, w = image.shape[:2]
-    rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-    mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=np.ascontiguousarray(rgb))
-    
-    detector = get_detector(min_confidence)
-    det_results = detector.detect(mp_image)
+    det_results = get_cached_detections(image, min_confidence)
 
     if not det_results.detections:
         return {"check": "occlusion", "status": "fail", "reason": "no face detected"}
 
     detection_score = float(det_results.detections[0].categories[0].score)
 
-    landmarker = get_landmarker(min_confidence)
-    mesh_results = landmarker.detect(mp_image)
+    mesh_results = get_cached_landmarks(image, min_confidence)
 
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     region_points = {
