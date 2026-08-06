@@ -40,23 +40,30 @@ def ensure_models_exist():
             print(f"[ERROR] Failed to download landmarker model: {e}")
             raise e
 
+_DETECTOR_CACHE = {}
+_LANDMARKER_CACHE = {}
+
 def get_detector(min_confidence=0.5):
     ensure_models_exist()
-    base_options = python.BaseOptions(model_asset_path=DETECTOR_MODEL_PATH)
-    options = vision.FaceDetectorOptions(
-        base_options=base_options, 
-        min_detection_confidence=min_confidence
-    )
-    return vision.FaceDetector.create_from_options(options)
+    if min_confidence not in _DETECTOR_CACHE:
+        base_options = python.BaseOptions(model_asset_path=DETECTOR_MODEL_PATH)
+        options = vision.FaceDetectorOptions(
+            base_options=base_options, 
+            min_detection_confidence=min_confidence
+        )
+        _DETECTOR_CACHE[min_confidence] = vision.FaceDetector.create_from_options(options)
+    return _DETECTOR_CACHE[min_confidence]
 
 def get_landmarker(min_confidence=0.5):
     ensure_models_exist()
-    base_options = python.BaseOptions(model_asset_path=LANDMARKER_MODEL_PATH)
-    options = vision.FaceLandmarkerOptions(
-        base_options=base_options, 
-        min_face_detection_confidence=min_confidence
-    )
-    return vision.FaceLandmarker.create_from_options(options)
+    if min_confidence not in _LANDMARKER_CACHE:
+        base_options = python.BaseOptions(model_asset_path=LANDMARKER_MODEL_PATH)
+        options = vision.FaceLandmarkerOptions(
+            base_options=base_options, 
+            min_face_detection_confidence=min_confidence
+        )
+        _LANDMARKER_CACHE[min_confidence] = vision.FaceLandmarker.create_from_options(options)
+    return _LANDMARKER_CACHE[min_confidence]
 
 # ---- Landmark indices used throughout (confirmed via direct MediaPipe study) ----
 NOSE_TIP = 1
@@ -83,6 +90,18 @@ MIN_FACE_AREA_RATIO = 0.03   # face bounding box area / image area, minimum (cal
 CENTER_TOLERANCE = 0.20      # face center must be within this fraction of image center
 DETECTION_CONFIDENCE_MIN = 0.80  # below this, flag possible occlusion
 
+# MIN_FACE_WIDTH_PX calibrated against real measured values (brief Phase 2
+# Section 3's registration check, previously missing entirely -- confirmed
+# by grep before adding, distinct from MIN_FACE_AREA_RATIO above: area
+# ratio is about what FRACTION of the frame the face fills, resolution is
+# about absolute pixel detail available for matching, regardless of frame
+# size). At the app's negotiated 640x360 capture resolution, real genuine
+# close-up captures measure face bounding-box widths of 207-253px. 100px
+# gives every real measured capture more than 2x headroom while still
+# catching genuinely too-small/low-detail faces early, before they'd even
+# reach the area-ratio check.
+MIN_FACE_WIDTH_PX = 100
+
 
 def check_single_face(image, min_confidence=0.5):
     """
@@ -94,7 +113,6 @@ def check_single_face(image, min_confidence=0.5):
     
     detector = get_detector(min_confidence)
     results = detector.detect(mp_image)
-    detector.close()
     
     count = len(results.detections) if results.detections else 0
 
@@ -129,7 +147,6 @@ def check_pose(image):
     
     landmarker = get_landmarker()
     results = landmarker.detect(mp_image)
-    landmarker.close()
 
     if not results.face_landmarks:
         return {"check": "pose", "status": "fail", "reason": "no face detected"}
@@ -208,7 +225,6 @@ def check_position(image, min_confidence=0.5):
     
     detector = get_detector(min_confidence)
     results = detector.detect(mp_image)
-    detector.close()
 
     if not results.detections:
         return {"check": "position", "status": "fail", "reason": "no face detected"}
@@ -238,6 +254,38 @@ def check_position(image, min_confidence=0.5):
     }
 
 
+def check_resolution(image, min_confidence=0.5):
+    """
+    Checks the detected face's bounding box width in absolute pixels --
+    distinct from check_position()'s face_area_ratio, which only measures
+    what FRACTION of the frame the face fills. A face can occupy a
+    reasonable fraction of a low-resolution frame and still not have
+    enough real pixel detail for reliable matching; this catches that
+    case directly rather than through the area-ratio proxy.
+    """
+    rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+    mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=np.ascontiguousarray(rgb))
+
+    detector = get_detector(min_confidence)
+    results = detector.detect(mp_image)
+
+    if not results.detections:
+        return {"check": "resolution", "status": "fail", "reason": "no face detected"}
+
+    bbox = results.detections[0].bounding_box
+    face_width_px = bbox.width
+
+    status = "pass" if face_width_px >= MIN_FACE_WIDTH_PX else "fail"
+    reason = "" if status == "pass" else f"face too low-resolution ({face_width_px:.0f}px wide, need {MIN_FACE_WIDTH_PX}px)"
+
+    return {
+        "check": "resolution",
+        "face_width_px": round(face_width_px, 1),
+        "status": status,
+        "reason": reason,
+    }
+
+
 def check_occlusion(image, min_confidence=0.5):
     """
     Approximate occlusion check. Flags possible occlusion if detection confidence is low,
@@ -250,7 +298,6 @@ def check_occlusion(image, min_confidence=0.5):
     
     detector = get_detector(min_confidence)
     det_results = detector.detect(mp_image)
-    detector.close()
 
     if not det_results.detections:
         return {"check": "occlusion", "status": "fail", "reason": "no face detected"}
@@ -259,7 +306,6 @@ def check_occlusion(image, min_confidence=0.5):
 
     landmarker = get_landmarker(min_confidence)
     mesh_results = landmarker.detect(mp_image)
-    landmarker.close()
 
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     region_points = {

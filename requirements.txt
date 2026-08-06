@@ -2,6 +2,7 @@ opencv-python
 mediapipe
 deepface
 tensorflow
+tf-keras
 fastapi
 uvicorn[standard]
 streamlit

@@ -10,8 +10,8 @@ import sys
 import os
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
-from src.quality_checks import check_brightness, check_blur
-from src.quality_checks_day8_9 import check_single_face, check_pose, check_position, check_occlusion
+from src.quality_checks import check_brightness, check_blur, check_contrast
+from src.quality_checks_day8_9 import check_single_face, check_pose, check_position, check_occlusion, check_resolution
 
 QUALITY_PROFILES = {
     "strict":   {"threshold": 85, "description": "High-security re-authentication; assumes good hardware/lighting"},
@@ -81,12 +81,36 @@ def score_occlusion(frame):
     return {"name": "occlusion", "raw_value": det_score, "score": score}
 
 
+def score_contrast(frame):
+    result = check_contrast(frame)
+    value = result["value"]
+    # good/acceptable/worst chosen from the same real-vs-synthetic measurements
+    # documented next to CONTRAST_MIN in quality_checks.py: real genuine captures
+    # measure ~85-93, a moderate wash-out measures ~27, a severe one ~13.
+    score = _linear_score(value, good_value=70, acceptable_value=30, worst_value=10)
+    return {"name": "contrast", "raw_value": value, "score": score}
+
+
+def score_resolution(frame):
+    result = check_resolution(frame)
+    if result["status"] == "fail" and result.get("face_width_px") is None:
+        return {"name": "resolution", "raw_value": None, "score": 0.0}
+    width_px = result.get("face_width_px", 0)
+    # good/acceptable/worst chosen from the same real measurements documented
+    # next to MIN_FACE_WIDTH_PX in quality_checks_day8_9.py: real genuine
+    # close-up captures at 640x360 measure 207-253px face width.
+    score = _linear_score(width_px, good_value=200, acceptable_value=100, worst_value=50)
+    return {"name": "resolution", "raw_value": width_px, "score": score}
+
+
 WEIGHTS = {
     "brightness": 0.15,
-    "blur": 0.30,        # weighted highest: blur most directly damages matching accuracy
-    "pose": 0.25,
+    "blur": 0.25,        # was 0.30 -- trimmed 0.05 to fund contrast/resolution below, still highest weight
+    "pose": 0.20,         # was 0.25 -- trimmed 0.05 for the same reason
     "position": 0.15,
     "occlusion": 0.15,
+    "contrast": 0.05,     # new (brief Phase 2 Section 3) -- cheap statistical check, not meant to dominate
+    "resolution": 0.05,   # new (brief Phase 2 Section 3) -- cheap statistical check, not meant to dominate
 }
 
 
@@ -111,6 +135,8 @@ def compute_quality_score(frame, profile=None):
         "pose": score_pose(frame),
         "position": score_position(frame),
         "occlusion": score_occlusion(frame),
+        "contrast": score_contrast(frame),
+        "resolution": score_resolution(frame),
     }
 
     overall = sum(sub_results[k]["score"] * WEIGHTS[k] for k in WEIGHTS)

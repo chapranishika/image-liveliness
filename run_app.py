@@ -11,10 +11,37 @@ import sys
 import subprocess
 import time
 import signal
+import urllib.request
+import urllib.error
 
 from src.keys import load_env_file
 
+
+def warm_up_frontend(url="http://127.0.0.1:8501", timeout_seconds=45):
+    """
+    The Streamlit script's first execution in a fresh process pays a one-time
+    ~10-15s cost importing TensorFlow/DeepFace/MediaPipe (confirmed via direct
+    timing instrumentation: import-cache reruns after the first are near
+    instant). A plain HTTP GET is enough to trigger that first script
+    execution server-side. Firing one here, before printing "ready", means
+    the real user's first browser load never pays that cost -- the launcher
+    absorbs it instead of a live camera session doing so.
+    """
+    deadline = time.time() + timeout_seconds
+    while time.time() < deadline:
+        try:
+            urllib.request.urlopen(url, timeout=5)
+            return True
+        except (urllib.error.URLError, ConnectionError, TimeoutError):
+            time.sleep(1)
+    return False
+
+
 def main():
+    # Redirected output (e.g. via Start-Process) is fully buffered by default,
+    # which delays every print below until process exit -- reconfigure so
+    # progress is visible in real time whether run interactively or piped.
+    sys.stdout.reconfigure(line_buffering=True)
     print("=" * 80)
     print("SECURE FACE FRAMEWORK — UNIFIED APPLICATION LAUNCHER")
     print("=" * 80)
@@ -75,6 +102,13 @@ def main():
         frontend_cmd,
         env=env
     )
+
+    print("[Launcher] Warming up ML models (one-time cost, ~10-15s) so your first page load is instant...")
+    warmed = warm_up_frontend()
+    if warmed:
+        print("[Launcher] Warm-up complete.")
+    else:
+        print("[Launcher] Warm-up did not confirm in time -- the app will still work, first load may be slower.")
 
     print("\n[Launcher] System successfully initialized! Open your browser at http://127.0.0.1:8501")
     print("[Launcher] Press Ctrl+C in this terminal to shut down both applications cleanly.\n")

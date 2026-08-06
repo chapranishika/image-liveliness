@@ -6,14 +6,14 @@ This document details the structured storyboard, visual layout, and verbal scrip
 
 ## Video Goals
 1. Demonstrate the live multi-stage verification pipeline (Quality check, Passive Liveness check, Matching).
-2. Show guided multi-angle enrollment (automatic capture gated by Front, Left, and Right poses).
+2. Show guided front-facing enrollment (automatic capture gated by pose and quality).
 3. Verify security and legal compliance (GDPR/BIPA consent validation, duplicate prevention, soft/hard deletions).
 4. Highlight system diagnostics and health audit tools.
 
 ---
 
 ## 🎬 Setup & Recording Specifications
-* **Target Duration:** 2:30 to 3:30 minutes.
+* **Target Duration:** 2:00 to 3:00 minutes.
 * **Recording Mode:** Screen recording (1080p, 30fps) with clear microphone audio.
 * **Pre-Recording Prep:**
   1. Close CPU-heavy applications to ensure zero camera frame lag.
@@ -36,24 +36,22 @@ This document details the structured storyboard, visual layout, and verbal scrip
 
 ---
 
-### Scene 2: Automatic Multi-Angle Enrollment (0:30 – 1:30)
+### Scene 2: Automatic Front-Facing Enrollment (0:30 – 1:00)
 * **Visual on Screen:**
   * Toggle view to **Guided Enrollment**.
   * Type a new user name (e.g., `Alice`).
   * Check the **Legal Consent Checkbox** ("I agree to store my encrypted facial signature...").
-  * Show the progress tracker at Step 1 of 3: Look directly at the camera.
-  * Align face: the guide turns green, shows a circular progress countdown (1.5s), plays a success beep, and advances to Step 2.
-  * Turn head Left: an arrow cue appears on the video frame, captures automatically, and advances to Step 3.
-  * Turn head Right: an arrow cue appears, captures automatically, and displays all three registered photo templates at the bottom.
+  * Align face inside the outline: the guide turns green, shows a circular progress countdown (1.5s), plays a success beep, and captures automatically.
+  * The captured front photo appears at the bottom.
   * Click **Register Face ID** to complete enrollment.
 * **Verbal Script:**
   > *"Let's register a new user named Alice. Compliance guidelines like GDPR and BIPA require explicit user consent before storing biometrics. The backend blocks templates if consent is missing.*
   >
-  > *Once consent is checked, enrollment proceeds completely hands-free using automatic capture. The system gates capture by head pose. When I look front, it starts a 1.5-second countdown, play a soft beep, and captures. As I turn left and then right, arrow guides appear directly on the video pixels, and the camera captures when the target angle is matched. The database now securely encrypts and registers Alice's templates."*
+  > *Once consent is checked, enrollment proceeds completely hands-free using automatic capture. When I align my face in the outline, it starts a 1.5-second countdown, plays a soft beep, and captures a single front-facing template. Registration is deliberately single-angle: duplicate-check and live verification are both calibrated on frontal-vs-frontal matching (EER 3.19%), which is far stronger than cross-angle matching (EER 27.06%), so a left/right capture step wasn't adding verification accuracy -- see `docs/scope_decision_worksheet.md` for the full rationale. The database now securely encrypts and registers Alice's template."*
 
 ---
 
-### Scene 3: Duplicate Prevention Gating (1:30 – 2:00)
+### Scene 3: Duplicate Prevention Gating (1:00 – 1:30)
 * **Visual on Screen:**
   * Try to enroll a different user name (e.g., `Charlie`) using the exact same face.
   * Let the front photo capture automatically.
@@ -64,19 +62,21 @@ This document details the structured storyboard, visual layout, and verbal scrip
 
 ---
 
-### Scene 4: Real-Time Automatic Verification (2:00 – 2:40)
+### Scene 4: Real-Time Automatic Verification (1:30 – 2:10)
 * **Visual on Screen:**
   * Switch view to **Verify Identity**.
   * Align your face with the guide.
   * The countdown completes, captures automatically, and presents a beautiful animated success card with Alice's name and similarity score.
 * **Verbal Script:**
-  > *"Now, let's verify. Navigating back to 'Verify Identity', I align my face. The automated capture loop detects proper positioning and starts the countdown. Once captured, the pipeline runs quality checks, liveness checks, and template matching. The backend compares the live embedding against all registered templates at our calibrated threshold of 0.50, successfully verifying me as Alice."*
+  > *"Now, let's verify. Navigating back to 'Verify Identity', I align my face. The automated capture loop detects proper positioning and starts the countdown. Once captured, the pipeline runs quality checks, liveness checks, and template matching. The backend compares the live embedding against all registered templates at our calibrated threshold of 0.40, successfully verifying me as Alice."*
 
 ---
 
-### Scene 5: Compliance Audit & Diagnostics (2:40 – 3:30)
+### Scene 5: Compliance Audit & Diagnostics (2:10 – 3:00)
 * **Visual on Screen:**
-  * Open the bottom expander: **System Management & Audits**.
+  * Open the bottom expander: **System Management & Audits**, then check
+    "📊 Load compliance data & diagnostics" — this panel's queries and
+    health checks only run once explicitly loaded, not in the background.
   * Show the user table, access logs, and verification logs.
   * Soft-delete Alice. Show that subsequent verifications fail.
   * Scroll down and click **Run System Diagnostics & Health Checks**. Green checkmarks appear verifying database, encryption keys, and hardware.

@@ -167,8 +167,9 @@ def get_css_styles(theme_mode="light"):
 
     /* Stable WebRTC Component container styling */
     iframe[title="streamlit_webrtc.webrtc_streamer"], .stWebRtcStreamer, iframe {{
-        height: 340px !important;
         width: 100% !important;
+        aspect-ratio: 16 / 9 !important;
+        height: auto !important;
         border-radius: 12px !important;
         border: 1px solid {card_border} !important;
         overflow: hidden !important;
@@ -177,7 +178,8 @@ def get_css_styles(theme_mode="light"):
     
     .stWebRtcStreamer video {{
         width: 100% !important;
-        height: 340px !important;
+        height: 100% !important;
+        aspect-ratio: 16 / 9 !important;
         object-fit: cover !important;
         border-radius: 12px !important;
     }}

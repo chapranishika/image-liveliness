@@ -1,0 +1,413 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R 4 0 R 5 0 R 6 0 R 7 0 R] /Count 5 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 8 0 R /F2 9 0 R /F3 10 0 R >> >> /Contents 11 0 R >>
+endobj
+4 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 8 0 R /F2 9 0 R /F3 10 0 R >> >> /Contents 12 0 R >>
+endobj
+5 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 8 0 R /F2 9 0 R /F3 10 0 R >> >> /Contents 13 0 R >>
+endobj
+6 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 8 0 R /F2 9 0 R /F3 10 0 R >> >> /Contents 14 0 R >>
+endobj
+7 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 8 0 R /F2 9 0 R /F3 10 0 R >> >> /Contents 15 0 R >>
+endobj
+8 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>
+endobj
+9 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>
+endobj
+10 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Courier /Encoding /WinAnsiEncoding >>
+endobj
+11 0 obj
+<< /Length 2200 >>
+stream
+BT
+/F2 20 Tf
+72 740 Td
+22 TL
+(Secure Face Registration and Verification Framework) Tj
+T*
+/F1 13 Tf
+16 TL
+(Final Project Report) Tj
+T*
+/F1 10 Tf
+14 TL
+(Project Codename: Nishika     Report Date: August 6, 2026) Tj
+T*
+T*
+/F2 13 Tf
+18 TL
+(1. Problem Statement) Tj
+T*
+/F1 10 Tf
+13 TL
+(This system acts as a security guard for face-based login, with two jobs. First, when) Tj
+T*
+(someone signs up \(registration\), it takes a clear photo of their face and remembers it.) Tj
+T*
+(Second, when someone logs in later \(verification\), it looks at their face again and) Tj
+T*
+(answers two questions: is this a real, live person right now, and does this face belong) Tj
+T*
+(to the person who signed up.) Tj
+T*
+T*
+(A face-matching system alone can be fooled by a printed photo, a video, or a phone) Tj
+T*
+(screen. This system adds two more capabilities: liveness detection \(is this a real,) Tj
+T*
+(live person\) and image quality assessment \(is the photo even usable\). The two phases) Tj
+T*
+(-- registration and verification -- share one pipeline with two entry points, reusing) Tj
+T*
+(the same quality, liveness, and matching logic.) Tj
+T*
+T*
+/F2 13 Tf
+18 TL
+(2. Approach and Architecture) Tj
+T*
+/F1 10 Tf
+13 TL
+(Shared pipeline: Capture \(WebRTC webcam frame\) -> Face Detection \(MediaPipe, rejects) Tj
+T*
+(0 or more than 1 face\) -> Quality Assessment \(7-check weighted composite score\) ->) Tj
+T*
+(Liveness Detection \(Passive: MiniFASNet; Active: blink or head-turn challenge\) -> Face) Tj
+T*
+(Embedding \(ArcFace via DeepFace, pretrained\).) Tj
+T*
+T*
+(After embedding, the pipeline forks:) Tj
+T*
+(- Registration: Consent gate -> Duplicate check \(cosine similarity vs. existing) Tj
+T*
+(  templates, threshold 0.68\) -> Store template \(Fernet AES-128 encrypted at rest,) Tj
+T*
+(  front-facing only\).) Tj
+T*
+(- Verification: Fetch all active users' templates -> 1-to-N cosine-similarity match,) Tj
+T*
+(  accept at score 0.40 or higher -> Accept/Reject, logged to verification_logs.) Tj
+T*
+T*
+(Deployment: three local components on one machine, no cloud dependency -- Streamlit) Tj
+T*
+(UI \(with streamlit-webrtc for the camera\) -> FastAPI backend \(/register, /verify\) ->) Tj
+T*
+(SQLite \(local file: users, templates, access_log, verification_logs\). API-key auth) Tj
+T*
+(and a sliding-window rate limiter sit in front of the backend.) Tj
+T*
+T*
+(Deliberate change from the original brief: registration originally captured three) Tj
+T*
+(angles \(front/left/right\); this was simplified to a single front-facing capture --) Tj
+T*
+(full rationale in Section 4.) Tj
+ET
+endstream
+endobj
+12 0 obj
+<< /Length 2400 >>
+stream
+BT
+/F2 15 Tf
+72 740 Td
+20 TL
+(3. Results - Real Measured Numbers) Tj
+T*
+/F2 12 Tf
+16 TL
+(3.1 Face Matching Accuracy \(Frontal-vs-Frontal, the production path\)) Tj
+T*
+/F3 10 Tf
+13 TL
+(Equal Error Rate \(EER\):              3.19% at threshold 0.2642) Tj
+T*
+(ROC AUC:                             0.9953) Tj
+T*
+(At threshold 0.40 - False Accept Rate:   0.34% \(2/595\)) Tj
+T*
+(At threshold 0.40 - False Reject Rate:   15.09% \(16/106\)) Tj
+T*
+(Half Total Error Rate \(HTER\):        7.72%) Tj
+T*
+T*
+/F1 10 Tf
+(The mathematically "optimal" threshold \(0.2642\) was deliberately not used -- its) Tj
+T*
+(3.19% false-accept rate is too high for a security-critical system. The deployed) Tj
+T*
+(threshold of 0.40 forces near-zero false acceptance, accepting a higher false-) Tj
+T*
+(rejection rate as the tradeoff: a false reject simply re-prompts the user within) Tj
+T*
+(milliseconds, while a false accept is a real security failure.) Tj
+T*
+T*
+/F2 12 Tf
+16 TL
+(3.2 Passive Liveness / Attack Detection) Tj
+T*
+/F1 10 Tf
+13 TL
+(Re-measured on an expanded sample \(n=76 attacks / n=75 genuine\), superseding an) Tj
+T*
+(earlier n=5 figure that was too small to trust.) Tj
+T*
+T*
+/F3 10 Tf
+(At deployed threshold 0.90:) Tj
+T*
+(  APCER \(attacks wrongly accepted\):   46.05% \(35/76\) -- worse than the earlier estimate) Tj
+T*
+(  BPCER \(genuine wrongly rejected\):   0.00% \(0/75\)) Tj
+T*
+(  ACER:                               0.230) Tj
+T*
+T*
+(Per attack type:) Tj
+T*
+(  Printed Photo            5.3% missed   - reliably caught) Tj
+T*
+(  Screen Replay \(Phone\)    5.3% missed   - reliably caught) Tj
+T*
+(  Screen Replay \(Laptop\)   73.7% missed  - REAL, CONFIRMED WEAKNESS) Tj
+T*
+(  Frozen Frame             100% missed   - expected, handled by active liveness) Tj
+T*
+T*
+/F1 10 Tf
+(A threshold sweep shows raising the deployed threshold to 0.95-0.96 is a free) Tj
+T*
+(improvement in this sample \(genuine users unaffected\), but no threshold fully closes) Tj
+T*
+(the laptop-replay gap without a real cost to genuine acceptance. This report does) Tj
+T*
+(not change the deployed threshold -- that decision is left to the project owner) Tj
+T*
+(with this evidence in hand.) Tj
+ET
+endstream
+endobj
+13 0 obj
+<< /Length 2600 >>
+stream
+BT
+/F2 12 Tf
+72 740 Td
+16 TL
+(3.3 Quality Assessment Profile Acceptance) Tj
+T*
+/F1 10 Tf
+13 TL
+(Composite score combines 7 sub-checks \(Contrast and Resolution added this pass\).) Tj
+T*
+T*
+/F3 10 Tf
+(  Lenient \(50% threshold\):      100% acceptance \(genuine captures\)) Tj
+T*
+(  Balanced \(70%, default\):      0% acceptance \(small calibration sample\)) Tj
+T*
+(  Strict \(85% threshold\):       0% acceptance) Tj
+T*
+T*
+/F2 13 Tf
+18 TL
+(4. Limitations and Scope Decisions - Stated Plainly) Tj
+T*
+/F1 10 Tf
+13 TL
+(Physiological liveness \(rPPG\) - deferred. Built and calibrated offline \(heartbeat) Tj
+T*
+(detection from skin color\) but not wired into the live pipeline; it needs a stable) Tj
+T*
+(10-15 second capture window that does not fit the current per-tick UI model.) Tj
+T*
+T*
+(Active liveness covers 2 challenge types \(blink, head-turn\). A direct test confirmed) Tj
+T*
+(the expected consequence: a replayed video of a real blink is accepted \(status:) Tj
+T*
+(pass\). Landmark-based active liveness cannot distinguish a live blink from a) Tj
+T*
+(recorded one -- exactly why the system does not rely on it alone.) Tj
+T*
+T*
+(Occlusion detection is a visibility-based approximation, not a trained classifier.) Tj
+T*
+(It can flag likely obstruction but not identify what is causing it.) Tj
+T*
+T*
+(Demographic bias - confirmed, unmitigated. Measured across 80 real images: quality) Tj
+T*
+(pass rate 20.0% \(female\) vs. 42.5% \(male\); liveness pass rate 25.0% \(senior\) vs.) Tj
+T*
+(46.2% \(middle-aged\); a smaller but present skin-tone gap. No mitigation attempted.) Tj
+T*
+T*
+(Multi-angle enrollment simplified to front-only. The original three-angle flow was) Tj
+T*
+(unreliable in practice, and duplicate-detection and verification already relied on) Tj
+T*
+(the front template almost exclusively for accuracy.) Tj
+T*
+T*
+(A known, intermittent WebRTC connection hiccup exists -- the camera connection can) Tj
+T*
+(silently drop for 20-30 seconds and self-recover. Root-caused as far as the) Tj
+T*
+(evidence allows to a library-level characteristic, not an application bug.) Tj
+T*
+(Mitigation: keep continuous camera segments under about 30 seconds during live) Tj
+T*
+(demonstrations.) Tj
+ET
+endstream
+endobj
+14 0 obj
+<< /Length 1500 >>
+stream
+BT
+/F2 13 Tf
+72 740 Td
+18 TL
+(5. Registration Quality Checks - Gap Closed This Pass) Tj
+T*
+/F1 10 Tf
+13 TL
+(The brief specifies four registration image-quality checks: brightness, contrast,) Tj
+T*
+(blur, and resolution. Brightness and blur existed from early in the project;) Tj
+T*
+(contrast and resolution did not exist anywhere in the codebase, confirmed before) Tj
+T*
+(writing any new code. Both have now been added, calibrated against real captured) Tj
+T*
+(images, and wired into the composite quality score, the corrective guidance shown) Tj
+T*
+(to the user, and the live camera guide overlay.) Tj
+T*
+T*
+/F2 13 Tf
+18 TL
+(6. Verification - Fresh Automated Test Suite) Tj
+T*
+/F1 10 Tf
+13 TL
+(Full suite run fresh for this report:) Tj
+T*
+T*
+/F3 10 Tf
+(  13 passed in 10.10s) Tj
+T*
+T*
+/F1 10 Tf
+(Covering encryption round-trip integrity, consent enforcement, soft/hard delete) Tj
+T*
+(behavior, embedding similarity math, template matching \(best-of-angle and) Tj
+T*
+(threshold rejection\), and quality/liveness structure on genuine captures.) Tj
+ET
+endstream
+endobj
+15 0 obj
+<< /Length 2200 >>
+stream
+BT
+/F2 13 Tf
+72 740 Td
+18 TL
+(7. Learning Outcomes) Tj
+T*
+/F1 10 Tf
+13 TL
+(Computer Vision: face detection and landmark geometry, solvePnP-based head pose) Tj
+T*
+(recovery, and classical statistical quality proxies chosen deliberately over a) Tj
+T*
+(heavier trained model.) Tj
+T*
+T*
+(Face Recognition: ArcFace embeddings, cosine similarity matching, and the) Tj
+T*
+(distinction between a mathematically optimal threshold and one chosen for a) Tj
+T*
+(security-first tradeoff.) Tj
+T*
+T*
+(Liveness Detection: a three-layer design motivated by the fact that single-method) Tj
+T*
+(liveness is foolable -- demonstrated concretely by this project's own testing.) Tj
+T*
+T*
+(Biometric Authentication: consent gating, duplicate detection, encryption at rest,) Tj
+T*
+(and GDPR/BIPA-oriented deletion, implemented as core requirements, not) Tj
+T*
+(afterthoughts.) Tj
+T*
+T*
+(API Development: a FastAPI backend with key-based auth and rate limiting, kept) Tj
+T*
+(cleanly separate from the core pipeline so both the API and UI share one source) Tj
+T*
+(of truth.) Tj
+T*
+T*
+(Performance Evaluation: industry-standard metrics \(APCER/BPCER/ACER, EER/ROC/) Tj
+T*
+(AUC, HTER\) rather than one invented accuracy figure, including the discipline of) Tj
+T*
+(re-measuring a suspiciously small sample and reporting the result even when it) Tj
+T*
+(came out worse than expected.) Tj
+T*
+T*
+T*
+/F1 8 Tf
+11 TL
+(This report consolidates findings already documented in README.md,) Tj
+T*
+(Evaluation_Report.md, and scope_decision_worksheet.md. No new analysis is) Tj
+T*
+(introduced beyond what those source documents establish.) Tj
+ET
+endstream
+endobj
+xref
+0 16
+0000000000 65535 f
+0000000009 00000 n
+0000000058 00000 n
+0000000117 00000 n
+0000000254 00000 n
+0000000391 00000 n
+0000000528 00000 n
+0000000665 00000 n
+0000000802 00000 n
+0000000883 00000 n
+0000000970 00000 n
+0000001053 00000 n
+0000003309 00000 n
+0000005765 00000 n
+0000008421 00000 n
+0000009977 00000 n
+trailer
+<< /Size 16 /Root 1 0 R >>
+startxref
+12233
+%%EOF
