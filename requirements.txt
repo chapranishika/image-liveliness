@@ -3,6 +3,7 @@ mediapipe
 deepface
 tensorflow
 tf-keras
+torch
 fastapi
 uvicorn[standard]
 streamlit

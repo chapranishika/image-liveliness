@@ -23,7 +23,7 @@ import sys
 import os
 
 sys.path.insert(0, os.path.dirname(__file__))
-from quality_checks_day8_9 import check_pose  # reuse Day 8's solvePnP pose logic
+from quality_checks_day8_9 import check_pose, get_landmarker, get_cached_landmarks  # reuse Day 8's solvePnP pose logic + cached landmarker
 
 from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
@@ -200,6 +200,93 @@ def run_head_turn_challenge(direction="left", camera_index=0, timeout_seconds=8)
         "reason": "" if turn_detected else "required turn angle not sustained within timeout",
         "max_yaw_observed": round(max_yaw_seen, 1),
     }
+
+
+def evaluate_blink_tick(frame, history):
+    """
+    Single-frame, tick-compatible counterpart to run_blink_challenge() --
+    the live app's fragment reruns feed one already-captured WebRTC frame
+    per tick rather than owning a blocking cv2.VideoCapture loop, so this
+    takes one frame plus the running history and returns the updated
+    history plus a status, instead of looping internally.
+
+    Reuses the exact same EAR pipeline and thresholds (compute_ear,
+    RIGHT_EYE/LEFT_EYE, EAR_BLINK_THRESHOLD, BLINK_CONSEC_FRAMES_MIN,
+    get_landmarker) as the blocking version -- only the frame-source and
+    control flow differ, not the detection logic itself.
+
+    history: list of past avg_ear float samples (pass [] on the first tick
+    of a new challenge attempt).
+
+    Returns (new_history, status) where status is "pending" or "pass".
+    """
+    h, w = frame.shape[:2]
+    # get_cached_landmarks() reuses the same detection result check_pose()
+    # (called earlier in the same live tick, via verify_pose_and_quality())
+    # already computed for this exact frame object -- avoids paying for a
+    # second full MediaPipe landmark-detection pass on identical input.
+    # Confirmed measurably necessary: real live testing showed ~1 tick/sec
+    # instead of the designed ~12.5/sec, traced to this and the rPPG
+    # extraction each independently re-running detection on the same frame.
+    results = get_cached_landmarks(frame, 0.5)
+
+    if not results.face_landmarks:
+        return history, "pending"
+
+    landmarks = results.face_landmarks[0]
+    ear_right = compute_ear(landmarks, RIGHT_EYE, w, h)
+    ear_left = compute_ear(landmarks, LEFT_EYE, w, h)
+    avg_ear = (ear_right + ear_left) / 2.0
+    new_history = history + [avg_ear]
+
+    # Same dip-then-recover detection as run_blink_challenge(): count
+    # consecutive samples below threshold, and declare a blink the moment
+    # EAR recovers above threshold after enough consecutive low samples.
+    below_streak = 0
+    for val in reversed(new_history):
+        if val < EAR_BLINK_THRESHOLD:
+            below_streak += 1
+        else:
+            break
+    if below_streak == 0 and len(new_history) >= 2:
+        prior_streak = 0
+        for val in new_history[-2::-1]:
+            if val < EAR_BLINK_THRESHOLD:
+                prior_streak += 1
+            else:
+                break
+        if prior_streak >= BLINK_CONSEC_FRAMES_MIN:
+            return new_history, "pass"
+
+    return new_history, "pending"
+
+
+def evaluate_head_turn_tick(frame, history, direction="left"):
+    """
+    Single-frame, tick-compatible counterpart to run_head_turn_challenge().
+    Reuses check_pose()'s solvePnP yaw (Day 8) and the same HEAD_TURN_HOLD_FRAMES
+    threshold logic as the blocking version.
+
+    history: running count of consecutive in-target-zone ticks so far (pass
+    0 on the first tick of a new challenge attempt).
+
+    Returns (new_history, status) where status is "pending" or "pass".
+    """
+    pose_result = check_pose(frame)
+    yaw = pose_result.get("yaw")
+
+    if yaw is None:
+        return 0, "pending"
+
+    in_target_zone = (
+        (direction == "left" and yaw < -25.0) or
+        (direction == "right" and yaw > 25.0)
+    )
+    new_history = history + 1 if in_target_zone else 0
+
+    if new_history >= HEAD_TURN_HOLD_FRAMES:
+        return new_history, "pass"
+    return new_history, "pending"
 
 
 def run_random_active_challenge(camera_index=0, preferred_challenge=None):

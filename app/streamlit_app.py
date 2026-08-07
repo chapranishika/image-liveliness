@@ -17,7 +17,29 @@ import time
 from PIL import Image
 import io
 import av
+import random
 from streamlit_webrtc import webrtc_streamer, WebRtcMode, RTCConfiguration
+
+# WebRTC hiccup mitigation attempt (docs/scope_decision_worksheet.md): the
+# documented 20-32s silent connection drop lines up almost exactly with
+# aioice's own consent-freshness watchdog (CONSENT_INTERVAL=5s *
+# CONSENT_FAILURES=6 ~= 30s, see venv/Lib/site-packages/aioice/ice.py) --
+# after that many consecutive failed consent checks the ICE agent closes
+# the connection outright rather than tolerating a transient stall. Raising
+# the failure budget means a temporary stall (the observed behavior is a
+# clean stop-then-resume, not a real network failure) is more likely to be
+# ridden out on the SAME connection instead of forcing a slower full
+# reconnect. Not guaranteed -- if the underlying stall is a genuine
+# prolonged issue rather than a borderline-tolerance one, this just delays
+# how long it takes to detect a real failure. aiortc/streamlit-webrtc
+# expose no public config for this (confirmed: RTCConfiguration only
+# carries iceServers), so this is the only lever available short of a
+# different WebRTC library. Two-line, trivially revertible if it doesn't help.
+try:
+    import aioice.ice as _aioice_ice
+    _aioice_ice.CONSENT_FAILURES = 20  # was 6
+except Exception:
+    pass
 
 # Setup paths and ensure src is importable
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
@@ -58,6 +80,26 @@ from src.quality_score import compute_quality_score, QUALITY_PROFILES
 from src.quality_checks_day8_9 import check_pose, check_single_face
 from src.quality_checks import is_frame_corrupted
 from src.liveness_passive import check_passive_liveness
+from src.liveness_active import evaluate_blink_tick, evaluate_head_turn_tick
+from src.rppg import extract_green_mean_from_frame, check_rppg_liveness_from_samples
+
+# The theoretical tick rate is ~12.5/sec (the time.sleep(0.08) in the rerun
+# trigger below), but real live testing measured actual ticks landing about
+# 1 second apart -- MediaPipe detection + quality scoring + Streamlit's own
+# rerun overhead dominate, not the sleep. Redundant per-tick detection calls
+# (fixed via get_cached_landmarks() reuse, see liveness_active.py/rppg.py)
+# closed part of that gap, but the real rate still isn't a fixed constant
+# worth hardcoding. A hardcoded 12.5fps assumption previously meant the
+# rPPG "enough samples" threshold (fps*5 ~= 62 samples) could take 60+ real
+# seconds to reach while the timeout was only 8s -- rPPG would have failed
+# almost every time regardless of a genuine live face. Fixed by tracking
+# real wall-clock elapsed time instead: wait at least RPPG_MIN_WINDOW_S of
+# real time, then compute the actual observed fps (samples / elapsed) and
+# pass THAT to check_rppg_liveness_from_samples() -- correct regardless of
+# how fast ticks actually land.
+ACTIVE_CHALLENGE_TIMEOUT_S = 20.0
+RPPG_MIN_WINDOW_S = 5.0
+RPPG_TIMEOUT_S = 20.0
 
 # Set database path from environment
 db.DB_PATH = os.environ.get("FACE_DB_PATH", os.path.join("data", "face_verification.db"))
@@ -358,10 +400,6 @@ def verify_pose_and_quality(frame, profile_name, check_liveness=False):
         # Run passive liveness check on captured frame
         liveness_res = check_passive_liveness(frame)
 
-        if os.environ.get("DEBUG_LIVENESS"):
-            with open("scratch/debug_liveness.log", "a") as _f:
-                _f.write(f"{liveness_res}\n")
-
         if liveness_res["status"] == "fail" and profile_name == "lenient":
             liveness_res["status"] = "pass"
 
@@ -560,195 +598,409 @@ def run_verification_logic(latest_img, profile_name):
 # ---------------------------------------------------------
 col_cam, col_actions = st.columns([1.1, 0.9])
 
-with col_cam:
-    with st.container(border=True):
-        st.markdown('<div class="consumer-title">Camera Feed</div>', unsafe_allow_html=True)
-        st.markdown('<div class="consumer-sub">Align your face inside the dashed area below.</div>', unsafe_allow_html=True)
+# ---------------------------------------------------------
+# CAMERA CARD -- scoped to an st.fragment so the ~12.5/sec polling tick
+# only reruns/re-renders this card, not the entire page (header, sidebar,
+# admin panels, etc). Perf investigation (scratch/perf_loop_log.txt) showed
+# the real per-tick cost was dominated by Streamlit's full-script rerun,
+# not by verify_pose_and_quality() itself (which measured 0-8ms). The 4
+# "something happened" st.rerun() calls below (capture success / step
+# advance) deliberately stay plain st.rerun() (full-app scope, the
+# default) so col_actions still picks up the new state and shows the
+# result -- only the routine "still polling, nothing changed" trigger at
+# the bottom is scoped to the fragment.
+# ---------------------------------------------------------
+@st.fragment
+def render_camera_card():
+    st.markdown('<div class="consumer-title">Camera Feed</div>', unsafe_allow_html=True)
+    st.markdown('<div class="consumer-sub">Align your face inside the dashed area below.</div>', unsafe_allow_html=True)
 
-        ctx = webrtc_streamer(
-            key="shared_webrtc_camera",
-            mode=WebRtcMode.SENDRECV,
-            video_frame_callback=st.session_state.grabber.video_frame_callback,
-            media_stream_constraints={
-                "video": {
-                    "width": {"ideal": 640},
-                    "height": {"ideal": 360},
-                    "aspectRatio": 1.7777777778
-                },
-                "audio": False
+    ctx = webrtc_streamer(
+        key="shared_webrtc_camera",
+        mode=WebRtcMode.SENDRECV,
+        video_frame_callback=st.session_state.grabber.video_frame_callback,
+        media_stream_constraints={
+            "video": {
+                "width": {"ideal": 640},
+                "height": {"ideal": 360},
+                "aspectRatio": 1.7777777778
             },
-            # Browser and Streamlit server are the same machine -- no NAT
-            # traversal is ever needed, so skip STUN entirely rather than
-            # letting aiortc fall back to its default public STUN server
-            # (which can stall/retry on a restricted or slow network).
-            rtc_configuration=RTCConfiguration({"iceServers": []}),
-            async_processing=True
-        )
+            "audio": False
+        },
+        # Browser and Streamlit server are the same machine -- no NAT
+        # traversal is ever needed, so skip STUN entirely rather than
+        # letting aiortc fall back to its default public STUN server
+        # (which can stall/retry on a restricted or slow network).
+        rtc_configuration=RTCConfiguration({"iceServers": []}),
+        async_processing=True
+    )
+    # Mirrored into session_state so code outside this fragment (the
+    # col_actions column, and the second latest_img fetch just below the
+    # fragment call) can read camera state without needing `ctx` itself,
+    # which is now local to this fragment function.
+    st.session_state.cam_playing = ctx.state.playing
 
-        # Determine target state for dynamic guide styling
-        instructions_text = "Align your face with the guide"
-        overlay_class = ""
-        
-        # Determine active profile settings
-        active_prof = st.session_state.get("selected_profile", "balanced")
-        
-        # Check success-flash status
-        is_flashing = False
-        if "flash_end_time" in st.session_state and st.session_state.flash_end_time is not None:
-            if time.time() < st.session_state.flash_end_time:
-                is_flashing = True
-                overlay_class = "success"
-                instructions_text = "Captured!"
-            else:
-                st.session_state.flash_end_time = None
-                
-        # Grab current frame from grabber thread safely
-        latest_img = None
-        if ctx.state.playing and not is_flashing:
-            with st.session_state.grabber.frame_lock:
-                if st.session_state.grabber.latest_frame is not None:
-                    latest_img = st.session_state.grabber.latest_frame.copy()
+    # Determine target state for dynamic guide styling
+    instructions_text = "Align your face with the guide"
+    overlay_class = ""
+    guide_arrow_val = "none"
 
-        # Determine check mode loop conditions
-        would_poll_if_not_flashing = False
-        if ctx.state.playing:
-            if st.session_state.active_view == "Guided Enrollment":
-                if st.session_state.get("enroll_step", 1) < 2:
-                    would_poll_if_not_flashing = True
-            elif st.session_state.active_view == "Verify Identity":
-                outcome = st.session_state.get("verify_outcome")
-                if not outcome or outcome.get("status") != "pass":
-                    would_poll_if_not_flashing = True
+    # Determine active profile settings
+    active_prof = st.session_state.get("selected_profile", "balanced")
 
-        run_realtime_loop = would_poll_if_not_flashing and not is_flashing
-        # Keep the auto-rerun trigger alive through a flash too -- otherwise
-        # nothing ever re-checks whether flash_end_time has passed, and a
-        # multi-step flow (Guided Enrollment) freezes on "Captured!" forever
-        # after any step but the last, since nothing else schedules a rerun.
-        keep_polling_alive = run_realtime_loop or (would_poll_if_not_flashing and is_flashing)
+    # Check success-flash status
+    is_flashing = False
+    if "flash_end_time" in st.session_state and st.session_state.flash_end_time is not None:
+        if time.time() < st.session_state.flash_end_time:
+            is_flashing = True
+            overlay_class = "success"
+            instructions_text = "Captured!"
+        else:
+            st.session_state.flash_end_time = None
 
-        if run_realtime_loop and latest_img is not None:
-            verify_res = verify_pose_and_quality(latest_img, active_prof, check_liveness=False)
+    # Grab current frame from grabber thread safely
+    latest_img = None
+    if ctx.state.playing and not is_flashing:
+        with st.session_state.grabber.frame_lock:
+            if st.session_state.grabber.latest_frame is not None:
+                latest_img = st.session_state.grabber.latest_frame.copy()
 
-            # A live camera feed naturally flickers -- a single momentary blur
-            # or yaw blip can make one frame in an otherwise-good hold report
-            # "fail". Without tolerance, that one frame wipes an
-            # almost-complete countdown and restarts it, which looks to the
-            # user like verification simply hangs. Tolerate a couple of
-            # consecutive misses before giving up on an in-progress countdown.
-            FLICKER_TOLERANCE = 2
-            if verify_res["status"] == "pass":
-                st.session_state.countdown_fail_streak = 0
-                treat_as_pass = True
-            else:
-                fail_streak = st.session_state.get("countdown_fail_streak", 0) + 1
-                st.session_state.countdown_fail_streak = fail_streak
-                treat_as_pass = (
-                    st.session_state.get("countdown_start") is not None
-                    and fail_streak <= FLICKER_TOLERANCE
+    # Determine check mode loop conditions
+    would_poll_if_not_flashing = False
+    if ctx.state.playing:
+        if st.session_state.active_view == "Guided Enrollment":
+            if st.session_state.get("enroll_step", 1) < 2:
+                would_poll_if_not_flashing = True
+        elif st.session_state.active_view == "Verify Identity":
+            outcome = st.session_state.get("verify_outcome")
+            if not outcome or outcome.get("status") != "pass":
+                would_poll_if_not_flashing = True
+
+    run_realtime_loop = would_poll_if_not_flashing and not is_flashing
+    # Keep the auto-rerun trigger alive through a flash too -- otherwise
+    # nothing ever re-checks whether flash_end_time has passed, and a
+    # multi-step flow (Guided Enrollment) freezes on "Captured!" forever
+    # after any step but the last, since nothing else schedules a rerun.
+    keep_polling_alive = run_realtime_loop or (would_poll_if_not_flashing and is_flashing)
+
+    if run_realtime_loop and latest_img is not None:
+        verify_res = verify_pose_and_quality(latest_img, active_prof, check_liveness=False)
+
+        if os.environ.get("DEBUG_CHALLENGE"):
+            with open("scratch/debug_challenge.log", "a") as _f:
+                _f.write(
+                    f"{time.time():.3f} view={st.session_state.active_view} "
+                    f"quality_status={verify_res['status']} quality_reason={verify_res.get('reason','')!r} "
+                    f"countdown_start={st.session_state.get('countdown_start')} "
+                    f"challenge_type={st.session_state.get('active_challenge_type')} "
+                    f"challenge_passed={st.session_state.get('active_challenge_passed')} "
+                    f"rppg_samples={len(st.session_state.get('rppg_samples') or [])} "
+                    f"verify_outcome={st.session_state.get('verify_outcome')}\n"
                 )
 
-            if treat_as_pass:
-                overlay_class = "success"
-                if "countdown_start" not in st.session_state or st.session_state.countdown_start is None:
-                    st.session_state.countdown_start = time.time()
+        # A live camera feed naturally flickers -- a single momentary blur
+        # or yaw blip can make one frame in an otherwise-good hold report
+        # "fail". Without tolerance, that one frame wipes an
+        # almost-complete countdown and restarts it, which looks to the
+        # user like verification simply hangs. Tolerate a couple of
+        # consecutive misses before giving up on an in-progress countdown.
+        FLICKER_TOLERANCE = 2
+        if verify_res["status"] == "pass":
+            st.session_state.countdown_fail_streak = 0
+            treat_as_pass = True
+        else:
+            fail_streak = st.session_state.get("countdown_fail_streak", 0) + 1
+            st.session_state.countdown_fail_streak = fail_streak
+            treat_as_pass = (
+                st.session_state.get("countdown_start") is not None
+                and fail_streak <= FLICKER_TOLERANCE
+            )
 
-                elapsed = time.time() - st.session_state.countdown_start
-                instructions_text = f"Hold still... {max(0.0, 1.5 - elapsed):.1f}s"
-                
-                if elapsed >= 1.5:
+        if treat_as_pass:
+            overlay_class = "success"
+            if "countdown_start" not in st.session_state or st.session_state.countdown_start is None:
+                st.session_state.countdown_start = time.time()
+
+            elapsed = time.time() - st.session_state.countdown_start
+            instructions_text = f"Hold still... {max(0.0, 1.5 - elapsed):.1f}s"
+
+            if elapsed >= 1.5:
+                # ---------------------------------------------------------
+                # ACTIVE LIVENESS CHALLENGE (Layer 2) -- runs after the
+                # quality hold, before the actual capture, in both flows.
+                # State lives in session_state (shared across fragment
+                # reruns, same pattern as countdown_start above), fed one
+                # already-fetched WebRTC frame per tick via
+                # evaluate_blink_tick()/evaluate_head_turn_tick()
+                # (src/liveness_active.py) instead of the blocking
+                # cv2.VideoCapture challenge functions, which can't read
+                # from this app's browser-based camera feed at all.
+                # ---------------------------------------------------------
+                phase_active = (
+                    st.session_state.get("active_challenge_type") is not None
+                    or st.session_state.get("active_challenge_passed", False)
+                )
+                if not phase_active:
+                    st.session_state.active_challenge_type = random.choice(["blink", "turn_left", "turn_right"])
+                    st.session_state.active_challenge_history = [] if st.session_state.active_challenge_type == "blink" else 0
+                    st.session_state.active_challenge_start = time.time()
+                    st.session_state.active_challenge_passed = False
+                    # Verify Identity also starts collecting an rPPG (Layer
+                    # 3) sample buffer from this same moment, running
+                    # concurrently rather than as a separate wait -- by the
+                    # time the active challenge resolves, the buffer often
+                    # already has enough samples.
                     if st.session_state.active_view == "Verify Identity":
-                        st.session_state.countdown_start = None
+                        st.session_state.rppg_samples = []
+                        st.session_state.rppg_collect_start = time.time()
+
+                def _fail_active_challenge(reason, stage="active_liveness", technical_reason=None):
+                    st.session_state.countdown_start = None
+                    st.session_state.active_challenge_type = None
+                    st.session_state.active_challenge_history = None
+                    st.session_state.active_challenge_passed = False
+                    st.session_state.rppg_samples = None
+                    st.session_state.rppg_collect_start = None
+                    st.session_state.flash_end_time = None
+                    if st.session_state.active_view == "Verify Identity":
+                        # Route through the same persistent verify_outcome
+                        # card (col_actions) and Advanced Details expander
+                        # every other verification failure uses, instead of
+                        # a transient st.error() that just flashes inside
+                        # the camera card and vanishes on the next tick --
+                        # this stage is specific (not the generic passive-
+                        # liveness message) so it's distinguishable from a
+                        # quality/matching failure.
+                        st.session_state.verify_outcome = {
+                            "status": "fail",
+                            "stage": stage,
+                            "reason": reason,
+                        }
+                        st.session_state.verify_boot_logs = technical_reason or reason
                         st.session_state.flash_end_time = time.time() + 0.6
-                        st.session_state.play_sound_trigger = True
-                        try:
-                            run_verification_logic(latest_img, active_prof)
-                        except Exception as e:
-                            import traceback
-                            traceback.print_exc()
-                            st.session_state.verify_outcome = {
-                                "status": "fail",
-                                "stage": "internal_error",
-                                "reason": str(e),
-                            }
+                        # col_actions (the outcome card) renders outside this
+                        # fragment, so it won't pick up the new verify_outcome
+                        # on a fragment-scoped tick -- a full rerun is needed
+                        # for the card to actually appear promptly, same as
+                        # every other path that sets verify_outcome already
+                        # does.
                         st.rerun()
+                    else:
+                        st.error(reason)
+                        time.sleep(1.5)
+
+                # Verify Identity collects rPPG samples on every tick through
+                # this whole phase, whether the blink/turn challenge itself
+                # has resolved yet or not -- it just needs a continuous
+                # stream of frames, not any particular user action.
+                if st.session_state.active_view == "Verify Identity":
+                    green_mean = extract_green_mean_from_frame(latest_img)
+                    if green_mean is not None:
+                        st.session_state.rppg_samples.append(green_mean)
+
+                if not st.session_state.active_challenge_passed:
+                    challenge_type = st.session_state.active_challenge_type
+                    challenge_elapsed = time.time() - st.session_state.active_challenge_start
+
+                    if challenge_type == "blink":
+                        new_hist, challenge_status = evaluate_blink_tick(latest_img, st.session_state.active_challenge_history)
+                        instructions_text = "Please blink twice"
+                    else:
+                        direction = "left" if challenge_type == "turn_left" else "right"
+                        new_hist, challenge_status = evaluate_head_turn_tick(latest_img, st.session_state.active_challenge_history, direction)
+                        instructions_text = f"Please turn your head {direction}"
+                        guide_arrow_val = direction
+                    st.session_state.active_challenge_history = new_hist
+
+                    if os.environ.get("DEBUG_CHALLENGE"):
+                        with open("scratch/debug_challenge.log", "a") as _f:
+                            _f.write(f"{time.time():.3f} view={st.session_state.active_view} type={challenge_type} elapsed={challenge_elapsed:.2f} status={challenge_status} hist={new_hist}\n")
+
+                    if challenge_status == "pass":
+                        st.session_state.active_challenge_passed = True
+                        st.session_state.active_challenge_type = None
+                        st.session_state.active_challenge_history = None
+                        if os.environ.get("DEBUG_CHALLENGE"):
+                            with open("scratch/debug_challenge.log", "a") as _f:
+                                _f.write(f"{time.time():.3f} *** CHALLENGE PASSED ***\n")
+                    elif challenge_elapsed >= ACTIVE_CHALLENGE_TIMEOUT_S:
+                        if os.environ.get("DEBUG_CHALLENGE"):
+                            with open("scratch/debug_challenge.log", "a") as _f:
+                                _f.write(f"{time.time():.3f} *** CHALLENGE TIMED OUT ***\n")
+                        _fail_active_challenge(
+                            "We couldn't detect the requested motion in time. Please try again and follow the on-screen prompt.",
+                            stage="active_liveness",
+                            technical_reason=f"active_liveness check failed: '{challenge_type}' challenge timed out after {ACTIVE_CHALLENGE_TIMEOUT_S:.0f}s with no detected {challenge_type}",
+                        )
+                    # else: still pending -- keep polling, prompt text above already reflects it
+
+                if st.session_state.active_challenge_passed:
+                    # Active challenge passed. Verify Identity additionally
+                    # gates on rPPG (Layer 3); Guided Enrollment proceeds
+                    # straight to its existing capture step.
+                    if st.session_state.active_view == "Verify Identity":
+                        samples = st.session_state.rppg_samples
+                        rppg_elapsed = time.time() - st.session_state.rppg_collect_start
+                        # Real observed sampling rate, not an assumed
+                        # constant -- see RPPG_MIN_WINDOW_S comment above.
+                        real_fps = len(samples) / rppg_elapsed if rppg_elapsed > 0 else 0.0
+                        if rppg_elapsed >= RPPG_MIN_WINDOW_S and real_fps > 0:
+                            rppg_res = check_rppg_liveness_from_samples(samples, fps_estimate=real_fps)
+                            if os.environ.get("DEBUG_CHALLENGE"):
+                                with open("scratch/debug_challenge.log", "a") as _f:
+                                    _f.write(f"{time.time():.3f} *** RPPG EVALUATED *** samples={len(samples)} elapsed={rppg_elapsed:.2f} real_fps={real_fps:.2f} result={rppg_res}\n")
+                            st.session_state.rppg_samples = None
+                            st.session_state.rppg_collect_start = None
+                            if rppg_res["status"] != "pass":
+                                _fail_active_challenge(
+                                    "Biometric check failed. Please ensure you are presenting a live face.",
+                                    stage="active_liveness",
+                                    technical_reason=f"rppg check failed: {rppg_res.get('reason', 'no clear pulse signal')}",
+                                )
+                            else:
+                                st.session_state.countdown_start = None
+                                st.session_state.active_challenge_passed = False
+                                st.session_state.flash_end_time = time.time() + 0.6
+                                st.session_state.play_sound_trigger = True
+                                try:
+                                    run_verification_logic(latest_img, active_prof)
+                                except Exception as e:
+                                    import traceback
+                                    traceback.print_exc()
+                                    st.session_state.verify_outcome = {
+                                        "status": "fail",
+                                        "stage": "internal_error",
+                                        "reason": str(e),
+                                    }
+                                if os.environ.get("DEBUG_CHALLENGE"):
+                                    with open("scratch/debug_challenge.log", "a") as _f:
+                                        _f.write(f"{time.time():.3f} *** run_verification_logic DONE *** verify_outcome={st.session_state.get('verify_outcome')}\n")
+                                st.rerun()
+                        elif rppg_elapsed >= RPPG_TIMEOUT_S:
+                            _fail_active_challenge(
+                                "Biometric check failed. Please ensure you are presenting a live face.",
+                                stage="active_liveness",
+                                technical_reason=f"rppg check failed: only {len(samples)} samples collected in {rppg_elapsed:.1f}s (needed >= {RPPG_MIN_WINDOW_S:.0f}s of real capture time)",
+                            )
+                        else:
+                            instructions_text = "Almost there, hold still a moment longer..."
                     else:
                         # Run strict liveness & quality verification at capture execution moment
                         check_res = verify_pose_and_quality(latest_img, active_prof, check_liveness=True)
                         if check_res["status"] == "fail":
                             st.session_state.countdown_start = None
+                            st.session_state.active_challenge_passed = False
                             st.session_state.flash_end_time = None
                             st.error(check_res["reason"])
                             time.sleep(1.5)
                         else:
                             st.session_state.countdown_start = None
+                            st.session_state.active_challenge_passed = False
                             st.session_state.flash_end_time = time.time() + 0.6
                             st.session_state.play_sound_trigger = True
                             st.session_state.enroll_front = latest_img.copy()
                             st.session_state.enroll_step = 2
                             st.rerun()
+        else:
+            st.session_state.countdown_start = None
+            st.session_state.countdown_fail_streak = 0
+            st.session_state.active_challenge_type = None
+            st.session_state.active_challenge_history = None
+            st.session_state.active_challenge_passed = False
+            st.session_state.rppg_samples = None
+            st.session_state.rppg_collect_start = None
+            reason = verify_res.get("reason", "")
+            if "couldn't find a face" in reason.lower() or "we couldn't find a face" in reason.lower():
+                overlay_class = ""
+                instructions_text = "Align your face with the guide"
             else:
-                st.session_state.countdown_start = None
-                st.session_state.countdown_fail_streak = 0
-                reason = verify_res.get("reason", "")
-                if "couldn't find a face" in reason.lower() or "we couldn't find a face" in reason.lower():
-                    overlay_class = ""
-                    instructions_text = "Align your face with the guide"
-                else:
-                    overlay_class = "warning"
-                    instructions_text = reason
-                    
-        # Update thread-safe grabber drawing parameters
-        with st.session_state.grabber.frame_lock:
-            st.session_state.grabber.guide_state = "success" if overlay_class == "success" else ("warning" if overlay_class == "warning" else "neutral")
+                overlay_class = "warning"
+                instructions_text = reason
 
-            st.session_state.grabber.guide_arrow = "none"
-            
-            pct_val = 0.0
-            if overlay_class == "success" and not is_flashing:
-                if "countdown_start" in st.session_state and st.session_state.countdown_start is not None:
-                    elapsed = time.time() - st.session_state.countdown_start
-                    pct_val = min(1.0, elapsed / 1.5)
-            st.session_state.grabber.guide_pct = pct_val
-            
-        # Play quiet success beep if triggered
-        if st.session_state.get("play_sound_trigger", False):
-            st.session_state.play_sound_trigger = False
-            st.markdown(f'<audio autoplay src="{BEEP_DATA_URI}" style="display:none;"></audio>', unsafe_allow_html=True)
-            
-        # Render instructions text with soft slide/fade transition container
-        status_text = instructions_text if ctx.state.playing else "Camera offline. Please click the start button above to activate the scanner."
-        st.markdown(f"""
-        <div class="guidance-text-container" style="text-align: center; margin-top: 12px; font-size: 0.85rem; color: #64748B; font-weight: 500;">
-            {status_text}
-        </div>
-        """, unsafe_allow_html=True)
-        
-        # 3. Quiet manual fallback capture button below camera stream
-        if ctx.state.playing and not is_flashing:
-            if st.button("Having trouble? Tap to capture manually", key="manual_fallback_capture_btn"):
-                if latest_img is not None:
-                    if st.session_state.active_view == "Verify Identity":
+    # Update thread-safe grabber drawing parameters
+    with st.session_state.grabber.frame_lock:
+        st.session_state.grabber.guide_state = "success" if overlay_class == "success" else ("warning" if overlay_class == "warning" else "neutral")
+
+        st.session_state.grabber.guide_arrow = guide_arrow_val
+
+        pct_val = 0.0
+        if overlay_class == "success" and not is_flashing:
+            if "countdown_start" in st.session_state and st.session_state.countdown_start is not None:
+                elapsed = time.time() - st.session_state.countdown_start
+                pct_val = min(1.0, elapsed / 1.5)
+        st.session_state.grabber.guide_pct = pct_val
+
+    # Play quiet success beep if triggered
+    if st.session_state.get("play_sound_trigger", False):
+        st.session_state.play_sound_trigger = False
+        st.markdown(f'<audio autoplay src="{BEEP_DATA_URI}" style="display:none;"></audio>', unsafe_allow_html=True)
+
+    # Render instructions text with soft slide/fade transition container
+    status_text = instructions_text if ctx.state.playing else "Camera offline. Please click the start button above to activate the scanner."
+    st.markdown(f"""
+    <div class="guidance-text-container" style="text-align: center; margin-top: 12px; font-size: 0.85rem; color: #64748B; font-weight: 500;">
+        {status_text}
+    </div>
+    """, unsafe_allow_html=True)
+
+    # 3. Quiet manual fallback capture button below camera stream
+    if ctx.state.playing and not is_flashing:
+        if st.button("Having trouble? Tap to capture manually", key="manual_fallback_capture_btn"):
+            if latest_img is not None:
+                if st.session_state.active_view == "Verify Identity":
+                    st.session_state.play_sound_trigger = True
+                    st.session_state.flash_end_time = time.time() + 0.6
+                    run_verification_logic(latest_img, active_prof)
+                    st.rerun()
+                else:
+                    check_res = verify_pose_and_quality(latest_img, active_prof, check_liveness=True)
+                    if check_res["status"] == "fail":
+                        st.error(check_res["reason"])
+                    else:
                         st.session_state.play_sound_trigger = True
                         st.session_state.flash_end_time = time.time() + 0.6
-                        run_verification_logic(latest_img, active_prof)
+                        st.session_state.enroll_front = latest_img.copy()
+                        st.session_state.enroll_step = 2
                         st.rerun()
-                    else:
-                        check_res = verify_pose_and_quality(latest_img, active_prof, check_liveness=True)
-                        if check_res["status"] == "fail":
-                            st.error(check_res["reason"])
-                        else:
-                            st.session_state.play_sound_trigger = True
-                            st.session_state.flash_end_time = time.time() + 0.6
-                            st.session_state.enroll_front = latest_img.copy()
-                            st.session_state.enroll_step = 2
-                            st.rerun()
-                else:
-                    st.error("Please wait until the camera feed is ready.")
+            else:
+                st.error("Please wait until the camera feed is ready.")
 
-# Fetch latest_img reference for compatibility with actions column blocks
+    # ---------------------------------------------------------
+    # ACTIVE RERUN TRIGGER LOOP -- scope="fragment" is the whole point of
+    # this refactor: this fires ~12.5x/sec while polling, and previously
+    # each tick re-executed and re-rendered the entire page. Now it only
+    # re-executes this fragment.
+    #
+    # Pre-existing bug found via real testing (not introduced by the active
+    # liveness/rPPG work, just never triggered by earlier synthetic-video
+    # tests, which never got past the active-challenge gate): Streamlit
+    # raises StreamlitAPIException if scope="fragment" is called while the
+    # CURRENT execution is itself a full-script rerun rather than a
+    # fragment rerun -- which happens here whenever a plain st.rerun() ran
+    # just before this (e.g. after run_verification_logic() on a failed
+    # verification, needed so col_actions outside the fragment updates),
+    # and this same tick's fragment execution reaches this line again with
+    # polling still wanting to continue. Falling back to a plain st.rerun()
+    # in that case keeps polling alive either way -- confirmed necessary
+    # via a real crash during live testing, not theoretical.
+    # ---------------------------------------------------------
+    if ctx.state.playing and keep_polling_alive:
+        time.sleep(0.08)  # ~12.5 checks/second
+        try:
+            st.rerun(scope="fragment")
+        except st.errors.StreamlitAPIException:
+            st.rerun()
+
+
+with col_cam:
+    with st.container(border=True):
+        render_camera_card()
+
+# Fetch latest_img reference for compatibility with actions column blocks.
+# Uses the session_state mirror set inside the fragment above, since `ctx`
+# itself is local to that fragment function.
 latest_img = None
-if ctx.state.playing:
+if st.session_state.get("cam_playing", False):
     with st.session_state.grabber.frame_lock:
         if st.session_state.grabber.latest_frame is not None:
             latest_img = st.session_state.grabber.latest_frame.copy()
@@ -1075,9 +1327,6 @@ with st.expander("🛠️ System Management & Audits (Admin/Compliance Review)",
                 st.markdown(f"**Models Cached**: {'✓ PASS' if r['mod_ok'] else '✗ FAIL'} ({r['mod_msg']})")
                 st.markdown(f"**Camera Ready**: {'✓ PASS' if r['cam_ok'] else '✗ FAIL'} ({r['cam_msg']})")
 
-# ---------------------------------------------------------
-# ACTIVE RERUN TRIGGER LOOP
-# ---------------------------------------------------------
-if ctx.state.playing and keep_polling_alive:
-    time.sleep(0.08) # ~12.5 checks/second
-    st.rerun()
+# Note: the routine polling/rerun trigger now lives inside render_camera_card()
+# above, scoped to that fragment (st.rerun(scope="fragment")) so the common
+# "still polling, nothing changed" tick doesn't re-render this whole page.
