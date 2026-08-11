@@ -11,12 +11,36 @@ def get_css_styles(theme_mode="light"):
     card_bg = "#1E293B" if is_dark else "#FFFFFF"
     card_border = "#334155" if is_dark else "#E2E8F0"
     text_color = "#F1F5F9" if is_dark else "#0F172A"
-    subtext_color = "#94A3B8" if is_dark else "#64748B"
+    # #64748B on this light-mode background measured ~3.6:1 contrast --
+    # below the 4.5:1 WCAG AA minimum for normal-size text, which is why
+    # checklist labels/subtitles/unselected-tab text read as too faint.
+    # #475569 measures ~5.9:1, comfortably passing, while still reading as
+    # visually secondary against the near-black primary text color.
+    subtext_color = "#94A3B8" if is_dark else "#475569"
     input_bg = "#1E293B" if is_dark else "#FFFFFF"
     segment_bg = "#1E293B" if is_dark else "#F1F5F9"
     progress_bg = "#334155" if is_dark else "#F1F5F9"
     dot_inactive = "#475569" if is_dark else "#CBD5E1"
-    
+
+    # st.info/error/warning/success color pairs. Streamlit colors its own
+    # native alert boxes from the browser/OS color scheme, independently of
+    # this app's own theme_mode toggle above -- when the two disagree (e.g.
+    # this app set to dark while the browser reports light), Streamlit
+    # picks dark text meant for a light page and this app paints a dark
+    # background under it, so the message becomes unreadable. Pinned
+    # explicitly below so contrast always matches this app's actual
+    # background, regardless of what the browser's own theme detection says.
+    if is_dark:
+        alert_info_bg, alert_info_text, alert_info_border = "#0C2D5E", "#93C5FD", "#1D4ED8"
+        alert_error_bg, alert_error_text, alert_error_border = "#4C1414", "#FCA5A5", "#DC2626"
+        alert_warning_bg, alert_warning_text, alert_warning_border = "#4A3200", "#FCD34D", "#D97706"
+        alert_success_bg, alert_success_text, alert_success_border = "#052E1A", "#6EE7A0", "#059669"
+    else:
+        alert_info_bg, alert_info_text, alert_info_border = "#EFF6FF", "#1D4ED8", "#BFDBFE"
+        alert_error_bg, alert_error_text, alert_error_border = "#FEF2F2", "#DC2626", "#FCA5A5"
+        alert_warning_bg, alert_warning_text, alert_warning_border = "#FFFBEB", "#B45309", "#FDE68A"
+        alert_success_bg, alert_success_text, alert_success_border = "#ECFDF5", "#059669", "#A7F3D0"
+
     return f"""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap');
@@ -155,14 +179,44 @@ def get_css_styles(theme_mode="light"):
         cursor: pointer !important;
     }}
     
-    div.stRadio > div[role="radiogroup"] div[data-checked="true"] {{
+    div.stRadio label[data-testid="stRadioOption"][data-selected="true"] {{
         background: {PRIMARY_COLOR} !important;
         border-radius: 6px !important;
     }}
-    
-    div.stRadio > div[role="radiogroup"] div[data-checked="true"] span {{
+
+    div.stRadio label[data-testid="stRadioOption"][data-selected="true"] [data-testid="stMarkdownContainer"] p {{
         color: #FFFFFF !important;
         font-weight: 600 !important;
+    }}
+
+    /* Streamlit renders its own colored dot indicator next to each radio
+    option (using Streamlit's default red accent, unrelated to this app's
+    palette) as a plain div immediately before the option's text -- selected
+    via that structural relationship rather than its emotion-generated
+    class name, which is not stable across Streamlit versions. This app's
+    pill-highlight styling above already shows which option is selected, so
+    the dot is redundant and hidden rather than recolored. */
+    div.stRadio label[data-testid="stRadioOption"] div:has(+ [data-testid="stMarkdownContainer"]) {{
+        display: none !important;
+    }}
+
+    /* st.checkbox's box+checkmark, same structural approach: the box is a
+    plain div immediately before the widget's text label. Pinned explicitly
+    to this app's own palette rather than left to Streamlit's native
+    checked-state color (default red, and not guaranteed to keep the
+    checkmark itself legible against it in every environment). */
+    div.stCheckbox div:has(+ [data-testid="stWidgetLabel"]) {{
+        background: {input_bg} !important;
+        border: 1.5px solid {card_border} !important;
+        border-radius: 4px !important;
+    }}
+    div.stCheckbox label[data-selected="true"] div:has(+ [data-testid="stWidgetLabel"]) {{
+        background: {PRIMARY_COLOR} !important;
+        border-color: {PRIMARY_COLOR} !important;
+    }}
+    div.stCheckbox label[data-selected="true"] div:has(+ [data-testid="stWidgetLabel"]) svg,
+    div.stCheckbox label[data-selected="true"] div:has(+ [data-testid="stWidgetLabel"]) polyline {{
+        stroke: #FFFFFF !important;
     }}
 
     /* Stable WebRTC Component container styling */
@@ -203,6 +257,17 @@ def get_css_styles(theme_mode="light"):
         background: {ACCENT_COLOR} !important;
         transform: translateY(-1px) !important;
         box-shadow: 0 4px 6px 0 rgba(37, 99, 235, 0.15) !important;
+    }}
+
+    /* Streamlit wraps a button's label text in its own <p> tag, which the
+    global bare-"p" text-color rule further down matches directly -- a
+    direct rule on an element always wins over a color merely inherited
+    from its parent, even with !important on both sides, so button text was
+    silently coming out as this app's dark body-text color regardless of
+    the white set on the button itself. Overridden here with higher
+    selector specificity so button labels reliably render white. */
+    div.stButton > button p {{
+        color: #FFFFFF !important;
     }}
     
     div.stButton > button:active {{
@@ -271,9 +336,58 @@ def get_css_styles(theme_mode="light"):
         border: 1px solid {card_border} !important;
         border-radius: 6px !important;
     }}
+
+    /* st.selectbox's outer wrapper (its own [role="group"] div, a level up
+    from the <input> targeted above) shows Streamlit's default red accent
+    as a border on focus -- same root cause as the earlier radio-dot fix:
+    Streamlit's native focus/accent styling, unrelated to this app's own
+    palette wherever this app hasn't explicitly overridden it. */
+    div.stSelectbox [role="group"] {{
+        border: 1px solid {card_border} !important;
+        border-radius: 6px !important;
+    }}
+    div.stSelectbox [role="group"]:focus-within {{
+        border-color: {PRIMARY_COLOR} !important;
+    }}
     
-    h1, h2, h3, h4, h5, h6, p, span, label, .stMarkdown, .stText, .stCheckbox {{
+    h1, h2, h3, h4, h5, h6, p, span, label, li, .stMarkdown, .stText, .stCheckbox {{
         color: {text_color} !important;
+    }}
+
+    /* Native st.info/error/warning/success alert boxes -- see the
+    alert_*_bg/text/border comment above for why these are pinned
+    explicitly instead of left to Streamlit's own theming. */
+    [data-testid="stAlertContainer"] {{
+        border-radius: 8px !important;
+        border: 1px solid transparent !important;
+    }}
+    [data-testid="stAlertContainer"]:has([data-testid="stAlertContentInfo"]) {{
+        background: {alert_info_bg} !important;
+        border-color: {alert_info_border} !important;
+    }}
+    [data-testid="stAlertContainer"]:has([data-testid="stAlertContentInfo"]) * {{
+        color: {alert_info_text} !important;
+    }}
+    [data-testid="stAlertContainer"]:has([data-testid="stAlertContentError"]) {{
+        background: {alert_error_bg} !important;
+        border-color: {alert_error_border} !important;
+    }}
+    [data-testid="stAlertContainer"]:has([data-testid="stAlertContentError"]) * {{
+        color: {alert_error_text} !important;
+    }}
+    [data-testid="stAlertContainer"]:has([data-testid="stAlertContentWarning"]) {{
+        background: {alert_warning_bg} !important;
+        border-color: {alert_warning_border} !important;
+    }}
+    [data-testid="stAlertContainer"]:has([data-testid="stAlertContentWarning"]) * {{
+        color: {alert_warning_text} !important;
+    }}
+    [data-testid="stAlertContainer"]:has([data-testid="stAlertContentSuccess"]) {{
+        background: {alert_success_bg} !important;
+        border-color: {alert_success_border} !important;
+    }}
+    [data-testid="stAlertContainer"]:has([data-testid="stAlertContentSuccess"]) * {{
+        color: {alert_success_text} !important;
     }}
 
     /* Animated arrows for turn prompts */
@@ -317,6 +431,50 @@ def get_css_styles(theme_mode="light"):
     @keyframes guidance-fade-in {{
         from {{ opacity: 0.6; transform: translateY(2px); }}
         to {{ opacity: 1.0; transform: translateY(0); }}
+    }}
+
+    /* Live "checks passing" checklist -- reuses the same status-badge
+    success/warning color tokens above (#059669 green, #D97706 amber)
+    rather than introducing new colors. */
+    .checklist-grid {{
+        display: grid !important;
+        grid-template-columns: 1fr 1fr !important;
+        gap: 6px 14px !important;
+        margin-top: 10px !important;
+    }}
+    .checklist-item {{
+        display: flex !important;
+        align-items: center !important;
+        gap: 7px !important;
+        font-size: 0.78rem !important;
+        color: {subtext_color} !important;
+    }}
+    .checklist-dot {{
+        flex-shrink: 0 !important;
+        width: 9px !important;
+        height: 9px !important;
+        border-radius: 50% !important;
+    }}
+    .checklist-dot.pass {{
+        background: #059669 !important;
+        border: 1px solid #059669 !important;
+    }}
+    .checklist-dot.fail {{
+        background: transparent !important;
+        border: 1.5px solid #D97706 !important;
+    }}
+    .checklist-dot.in_progress {{
+        background: transparent !important;
+        border: 1.5px solid {subtext_color} !important;
+        animation: checklist-pulse 1s ease-in-out infinite !important;
+    }}
+    .checklist-dot.pending {{
+        background: transparent !important;
+        border: 1.5px solid {dot_inactive} !important;
+    }}
+    @keyframes checklist-pulse {{
+        0%, 100% {{ opacity: 0.35; transform: scale(0.85); }}
+        50% {{ opacity: 1.0; transform: scale(1.05); }}
     }}
 
     /* Premium Verified Success Screen and Checkmark Animation */

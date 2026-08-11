@@ -25,9 +25,15 @@ def get_embedding(frame, model_name="ArcFace", detector_backend="skip"):
     rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
     mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=np.ascontiguousarray(rgb))
 
-    detector = get_detector(min_confidence=0.5)
+    # get_detector() returns a cached, shared instance (reused across every
+    # caller at this confidence level) -- closing it here would break every
+    # later call in the same process, since the cache would keep handing
+    # back the now-closed detector. min_confidence matches the live quality
+    # checklist's threshold so a frame that clears live detection doesn't
+    # then fail this crop step and silently fall back to embedding the
+    # whole uncropped frame.
+    detector = get_detector(min_confidence=0.3)
     results = detector.detect(mp_image)
-    detector.close()
 
     face_frame = frame
     if results.detections:

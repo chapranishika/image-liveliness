@@ -3,5 +3,5 @@
 
 COMPANY_NAME = "Nishika"
 LOGO_PATH = ""  # Renders a clean text logo using COMPANY_NAME
-PRIMARY_COLOR = "#2563eb"  # Friendly soft blue (Apple/Google style)
-ACCENT_COLOR = "#3b82f6"   # Secondary blue
+PRIMARY_COLOR = "#334155"  # Neutral slate -- buttons, active nav pill, logo mark
+ACCENT_COLOR = "#1E293B"   # Darker slate, used for hover/pressed states

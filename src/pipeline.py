@@ -21,7 +21,7 @@ import sys
 import os
 
 sys.path.insert(0, os.path.dirname(__file__))
-from quality_checks import check_brightness, check_blur
+from quality_checks import check_brightness, check_blur, check_screen_surface_texture
 from quality_checks_day8_9 import check_single_face, check_pose, check_position, check_occlusion
 from liveness_passive import check_passive_liveness
 from liveness_active import run_random_active_challenge
@@ -77,11 +77,34 @@ def run_liveness_stage(frame, run_active_challenge=True, preferred_challenge=Non
     pipeline to also run against static test images.
     """
     passive_result = check_passive_liveness(frame)
-    
-    # Lenient profile liveness override
+
+    # Screen-surface texture (Phase 3 screen-replay investigation): a cheap,
+    # non-ML signal run ALONGSIDE passive liveness, not a replacement for
+    # it -- MiniFASNet's own real result above is untouched either way, and
+    # is surfaced unchanged in passive_result. Motivation: a live-pipeline
+    # test (scratch/drive_screen_replay_attacks.py) found an attacker who
+    # sharpens/brightens a real screen-replay capture to clear the quality
+    # gate's blur/brightness sub-scores can reach the active-liveness
+    # challenge, where a spliced recorded blink was directly confirmed able
+    # to register a pass under favorable tick timing (see
+    # docs/scope_decision_worksheet.md's Phase 3 entry) -- i.e. passive
+    # liveness alone plus quality alone were not enough to reliably stop a
+    # moderately-optimized screen replay before it reached that weaker,
+    # timing-dependent layer. This check measures a different property
+    # (spatial uniformity of local sharpness) that the same sharpen/
+    # brighten adjustment does NOT restore back into the genuine range --
+    # see TEXTURE_UNIFORMITY_MIN's calibration comment in
+    # src/quality_checks.py for the real measured numbers.
+    screen_surface_result = check_screen_surface_texture(frame)
+
+    # Lenient profile liveness override -- applies to both signals equally,
+    # consistent with lenient already being the deliberately-relaxed
+    # accessibility profile that bypasses passive_result's own fail below.
     if passive_result["status"] == "fail" and profile == "lenient":
         passive_result["status"] = "pass"
-        
+    if screen_surface_result["status"] == "fail" and profile == "lenient":
+        screen_surface_result["status"] = "pass"
+
     if passive_result["status"] == "fail":
         return {
             "stage": "liveness",
@@ -89,9 +112,18 @@ def run_liveness_stage(frame, run_active_challenge=True, preferred_challenge=Non
             "failed_check": "passive_liveness",
             "reason": passive_result.get("reason", ""),
             "passive_result": passive_result,
+            "screen_surface_result": screen_surface_result,
             "active_result": None,
         }
 
+    # Real self-collected captures (docs/screen_replay_capture_checklist.md,
+    # "Real capture results") showed this heuristic underperforming on
+    # actual screen-replay attacks while producing some false positives on
+    # genuine live photos -- not a reliable signal on the available data.
+    # Still computed and included in the returned dict for visibility/
+    # future recalibration, but no longer blocks verification on its own --
+    # passive_result (the trained MiniFASNet model) is the primary
+    # anti-spoof gate here.
     active_result = None
     if run_active_challenge:
         active_result = run_random_active_challenge(preferred_challenge=preferred_challenge)
@@ -102,6 +134,7 @@ def run_liveness_stage(frame, run_active_challenge=True, preferred_challenge=Non
                 "failed_check": active_result.get("check", "active_liveness"),
                 "reason": active_result.get("reason", ""),
                 "passive_result": passive_result,
+                "screen_surface_result": screen_surface_result,
                 "active_result": active_result,
             }
 
@@ -111,6 +144,7 @@ def run_liveness_stage(frame, run_active_challenge=True, preferred_challenge=Non
         "failed_check": None,
         "reason": "",
         "passive_result": passive_result,
+        "screen_surface_result": screen_surface_result,
         "active_result": active_result,
     }
 

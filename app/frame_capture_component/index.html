@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  html, body { margin: 0; padding: 0; background: transparent; overflow: hidden; }
+  #wrap { position: relative; width: 100%; }
+  /* The raw getUserMedia feed is not mirrored by default (your own left
+     appears on the video's right), which is counter-intuitive for a
+     self-facing camera UI -- every normal camera/video-call app mirrors
+     the local self-view. Flipping #mirror-wrap (video + overlay together,
+     so the guide oval/arrow stay visually aligned) only affects on-screen
+     display -- canvas.drawImage() in captureFrame() below reads the
+     underlying video frame data directly, ignoring CSS transforms, so the
+     captured/analyzed frame sent to Python stays in true (unmirrored)
+     camera orientation, matching evaluate_head_turn_tick()'s yaw
+     convention (src/liveness_active.py). #status stays outside the mirror
+     so its text doesn't render backwards. */
+  #mirror-wrap { position: relative; width: 100%; transform: scaleX(-1); }
+  video { width: 100%; display: block; border-radius: 8px; background: #111; }
+  #overlay {
+    position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+    pointer-events: none;
+  }
+  #status {
+    position: absolute; bottom: 8px; left: 8px; color: #fff; font: 12px sans-serif;
+    background: rgba(0,0,0,0.45); padding: 3px 8px; border-radius: 4px;
+  }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div id="mirror-wrap">
+    <video id="video" autoplay playsinline muted></video>
+    <svg id="overlay" viewBox="0 0 640 360" preserveAspectRatio="none"></svg>
+  </div>
+  <div id="status">Starting camera...</div>
+</div>
+<canvas id="canvas" width="1280" height="720" style="display:none;"></canvas>
+<script>
+/*
+Plain getUserMedia + periodic canvas capture, rather than a full WebRTC
+peer connection -- no ICE/STUN/TURN negotiation to manage. Trade-off: this
+is not true real-time streaming, just a live local preview plus a frame
+sent back to Python every CAPTURE_INTERVAL_MS.
+
+Implements Streamlit's custom-component postMessage protocol directly
+(no streamlit-component-lib dependency, no CDN, no build step) --
+documented protocol: this frame sends "streamlit:componentReady" once
+loaded, receives "streamlit:render" events carrying Python-side args, and
+sends "streamlit:setComponentValue" with each captured frame.
+*/
+// A natural blink (~150-400ms) can fall entirely between two captures at a
+// slower interval and never appear in any frame -- 350ms catches it
+// reliably while staying well short of a real video stream's bandwidth/CPU
+// cost.
+const CAPTURE_INTERVAL_MS = 350;
+
+const video = document.getElementById("video");
+const canvas = document.getElementById("canvas");
+const ctx2d = canvas.getContext("2d");
+const overlay = document.getElementById("overlay");
+const statusEl = document.getElementById("status");
+
+let started = false;
+let lastArgs = {};
+
+function sendToStreamlit(type, extra) {
+  const payload = Object.assign({ type: type, isStreamlitMessage: true }, extra || {});
+  window.parent.postMessage(payload, "*");
+}
+
+function setFrameHeight() {
+  sendToStreamlit("streamlit:setFrameHeight", { height: wrap.offsetHeight || 380 });
+}
+
+const wrap = document.getElementById("wrap");
+
+function drawOverlay(args) {
+  const state = args.guide_state || "neutral";
+  const arrow = args.guide_arrow || "none";
+  const pct = args.guide_pct || 0.0;
+  const colors = { success: "#059669", warning: "#D97706", neutral: "#B4A08C" };
+  const color = colors[state] || colors.neutral;
+
+  const cx = 320, cy = 180, rx = 640 * 0.22, ry = 360 * 0.36;
+  let svg = `<ellipse cx="${cx}" cy="${cy}" rx="${rx}" ry="${ry}" fill="none" stroke="${color}" stroke-width="4"/>`;
+
+  const lsx = cx - rx * 0.5, lsy = cy + ry * 0.82, lex = cx - rx * 0.9, ley = cy + ry * 1.15;
+  const rsx = cx + rx * 0.5, rsy = cy + ry * 0.82, rex = cx + rx * 0.9, rey = cy + ry * 1.15;
+  svg += `<line x1="${lsx}" y1="${lsy}" x2="${lex}" y2="${ley}" stroke="${color}" stroke-width="4"/>`;
+  svg += `<line x1="${rsx}" y1="${rsy}" x2="${rex}" y2="${rey}" stroke="${color}" stroke-width="4"/>`;
+
+  if (arrow === "left") {
+    svg += `<line x1="${cx+rx+55}" y1="${cy}" x2="${cx+rx+15}" y2="${cy}" stroke="${color}" stroke-width="5" marker-end="url(#arrow)"/>`;
+  } else if (arrow === "right") {
+    svg += `<line x1="${cx-rx-55}" y1="${cy}" x2="${cx-rx-15}" y2="${cy}" stroke="${color}" stroke-width="5" marker-end="url(#arrowrev)"/>`;
+  }
+
+  if (pct > 0) {
+    const rad = rx + 18;
+    const startAngle = -90;
+    const endAngle = -90 + 360 * pct;
+    const largeArc = (endAngle - startAngle) > 180 ? 1 : 0;
+    const sx = cx + rad * Math.cos(startAngle * Math.PI / 180);
+    const sy = cy + rad * Math.sin(startAngle * Math.PI / 180);
+    const ex = cx + rad * Math.cos(endAngle * Math.PI / 180);
+    const ey = cy + rad * Math.sin(endAngle * Math.PI / 180);
+    svg += `<path d="M ${sx} ${sy} A ${rad} ${rad} 0 ${largeArc} 1 ${ex} ${ey}" fill="none" stroke="#059669" stroke-width="5"/>`;
+  }
+
+  svg += `<defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="5" refY="5" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="${color}"/></marker>
+    <marker id="arrowrev" markerWidth="10" markerHeight="10" refX="5" refY="5" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="${color}"/></marker>
+  </defs>`;
+
+  overlay.innerHTML = svg;
+}
+
+async function startCamera(constraints) {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ video: constraints || true, audio: false });
+    video.srcObject = stream;
+    await video.play();
+    statusEl.textContent = "Camera live";
+    setTimeout(() => { statusEl.style.display = "none"; }, 1500);
+
+    canvas.width = video.videoWidth || 640;
+    canvas.height = video.videoHeight || 360;
+
+    setInterval(captureFrame, CAPTURE_INTERVAL_MS);
+    captureFrame();
+  } catch (e) {
+    statusEl.textContent = "Camera error: " + e.message;
+    sendToStreamlit("streamlit:setComponentValue", { value: { error: String(e), ts: Date.now() } });
+  }
+}
+
+function captureFrame() {
+  if (video.readyState < 2) return;
+  ctx2d.drawImage(video, 0, 0, canvas.width, canvas.height);
+  // 1280x720 at quality 0.95 gives real detail margin above the sharpness
+  // and resolution quality thresholds. Same-origin iframe->parent
+  // postMessage, not a network call, so the larger payload has no real
+  // latency cost locally.
+  const dataUrl = canvas.toDataURL("image/jpeg", 0.95);
+  const b64 = dataUrl.split(",")[1];
+  sendToStreamlit("streamlit:setComponentValue", {
+    value: { frame_b64: b64, ts: Date.now(), w: canvas.width, h: canvas.height }
+  });
+}
+
+window.addEventListener("message", (event) => {
+  const data = event.data;
+  if (!data || data.type !== "streamlit:render") return;
+  const args = data.args || {};
+  lastArgs = args;
+  drawOverlay(args);
+  setFrameHeight();
+
+  if (!started) {
+    started = true;
+    const constraints = {
+      width: { ideal: 1280 },
+      height: { ideal: 720 },
+      aspectRatio: 1.7777777778
+    };
+    startCamera(constraints);
+  }
+});
+
+sendToStreamlit("streamlit:componentReady", { apiVersion: 1 });
+setFrameHeight();
+</script>
+</body>
+</html>

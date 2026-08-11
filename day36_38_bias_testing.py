@@ -80,11 +80,14 @@ def load_demographics():
             }
     return mapping
 
+SUB_SCORE_KEYS = ["brightness", "blur", "pose", "position", "occlusion", "contrast", "resolution"]
+
+
 def run_bias_evaluation(identities_dict, sampled_ids, demo_mapping):
     print("\n" + "=" * 90)
     print("DEMOGRAPHIC FAIRNESS & BIAS EVALUATION RUNNER")
     print("=" * 90)
-    
+
     # Group aggregators
     # Format: {group_val: {"quality_pass": X, "liveness_pass": Y, "total": Z}}
     stats = {
@@ -92,46 +95,60 @@ def run_bias_evaluation(identities_dict, sampled_ids, demo_mapping):
         "gender": {},
         "age": {}
     }
-    
+
+    # Phase 4 (4.1): per-sub-score breakdown by subgroup, to root-cause WHICH
+    # check drives a subgroup's aggregate quality-pass-rate gap, not just
+    # restate the aggregate. Tracks the mean 0-100 sub-score AND, for
+    # brightness specifically, the mean raw grayscale-intensity value
+    # (check_brightness()'s actual measurement, src/quality_checks.py) --
+    # darker skin reflecting less light back to a camera is a well-known,
+    # cheap-to-check source of exactly this kind of measurement bias.
+    subscore_stats = {
+        "skin_tone": {},
+        "gender": {},
+        "age": {}
+    }
+
     overall_total = 0
     overall_q_pass = 0
     overall_l_pass = 0
-    
+
     warnings = []
-    
+
     for ident_id in sampled_ids:
         # Get demographics
         demo = demo_mapping.get(ident_id, {"skin_tone": "Unknown", "gender": "Unknown", "age": "Unknown"})
-        
+
         # We test the first 2 frontal images for this identity
         front_paths = identities_dict[ident_id]["frontal"][:2]
-        
+
         for path in front_paths:
             img = cv2.imread(path)
             if img is None:
                 continue
-                
+
             # 1. Evaluate Quality Preset (Balanced >= 70%)
             q_res = compute_quality_score(img, profile="balanced")
             q_pass = 1 if q_res["decision"] == "accept" else 0
-            
+            sub_scores = q_res.get("sub_scores", {})
+
             # 2. Evaluate Passive Liveness (Score >= 0.90)
             l_res = check_passive_liveness(img)
             score = l_res.get("antispoof_score", 0.0)
             l_pass = 1 if score >= DEPLOYED_LIVENESS_THRESHOLD else 0
-            
+
             if l_pass == 0:
                 warnings.append(
                     f"False Liveness Rejection: Identity {ident_id} ({demo['skin_tone']}, {demo['gender']}), "
                     f"Image {os.path.basename(path)} flagged as spoof (score={score:.4f})"
                 )
-            
+
             overall_total += 1
             q_q = q_pass
             l_l = l_pass
             overall_q_pass += q_q
             overall_l_pass += l_l
-            
+
             # Record in demographic groups
             for category in ["skin_tone", "gender", "age"]:
                 val = demo[category]
@@ -140,6 +157,31 @@ def run_bias_evaluation(identities_dict, sampled_ids, demo_mapping):
                 stats[category][val]["q_pass"] += q_q
                 stats[category][val]["l_pass"] += l_l
                 stats[category][val]["total"] += 1
+
+                if val not in subscore_stats[category]:
+                    subscore_stats[category][val] = {
+                        "n_no_face": 0,
+                        **{k: {"score_sum": 0.0, "n": 0} for k in SUB_SCORE_KEYS},
+                        "brightness_raw_sum": 0.0,
+                        "brightness_raw_n": 0,
+                    }
+                bucket = subscore_stats[category][val]
+                if not sub_scores:
+                    # compute_quality_score() returns empty sub_scores when
+                    # check_single_face() itself failed -- no sub-check ever
+                    # ran, so this sample contributes nothing to the
+                    # per-sub-score means (counted separately, not divided
+                    # into them, so it can't silently skew the averages).
+                    bucket["n_no_face"] += 1
+                for key in SUB_SCORE_KEYS:
+                    sub = sub_scores.get(key)
+                    if sub is not None and sub.get("score") is not None:
+                        bucket[key]["score_sum"] += sub["score"]
+                        bucket[key]["n"] += 1
+                brightness_sub = sub_scores.get("brightness")
+                if brightness_sub is not None and brightness_sub.get("raw_value") is not None:
+                    bucket["brightness_raw_sum"] += brightness_sub["raw_value"]
+                    bucket["brightness_raw_n"] += 1
 
     # Printing Results
     print("\nOVERALL SUMMARY")
@@ -167,7 +209,40 @@ def run_bias_evaluation(identities_dict, sampled_ids, demo_mapping):
             qp_str = f"{qp_rate*100:.1f}% ({qp}/{tot})"
             lp_str = f"{lp_rate*100:.1f}% ({lp}/{tot})"
             print(f"{val:<20} | {qp_str:<35} | {lp_str}")
-            
+
+    # Phase 4 (4.1): per-sub-score breakdown -- root-causing WHICH check
+    # drives each subgroup's aggregate quality-pass-rate gap, not just
+    # restating that a gap exists.
+    print("\n" + "=" * 90)
+    print("PER-SUB-SCORE BREAKDOWN BY SUBGROUP (mean 0-100 sub-score, compute_quality_score())")
+    print("=" * 90)
+    for category in ["skin_tone", "gender", "age"]:
+        print(f"\nSUBGROUP: {category.upper()}")
+        header = f"{'Subgroup':<14}" + "".join(f"{k:<12}" for k in SUB_SCORE_KEYS)
+        print(header)
+        print("-" * len(header))
+        for val, bucket in sorted(subscore_stats[category].items()):
+            row = f"{val:<14}"
+            for key in SUB_SCORE_KEYS:
+                n = bucket[key]["n"]
+                mean = bucket[key]["score_sum"] / n if n > 0 else float("nan")
+                row += f"{mean:<12.1f}"
+            print(row)
+            if bucket["n_no_face"] > 0:
+                print(f"  ({bucket['n_no_face']} sample(s) had no sub-scores at all -- check_single_face() failed, excluded from the means above, not counted as 0)")
+
+    print("\n" + "=" * 90)
+    print("BRIGHTNESS RAW MEASUREMENT BY SUBGROUP (check_brightness()'s actual grayscale mean intensity, 0-255)")
+    print("=" * 90)
+    print("Hypothesis being checked: darker skin reflects less light back to a camera, which is a")
+    print("well-known source of measurement bias in vision systems using raw pixel intensity.")
+    for category in ["skin_tone", "gender", "age"]:
+        print(f"\nSUBGROUP: {category.upper()}")
+        for val, bucket in sorted(subscore_stats[category].items()):
+            n = bucket["brightness_raw_n"]
+            mean_raw = bucket["brightness_raw_sum"] / n if n > 0 else float("nan")
+            print(f"  {val:<14} mean grayscale intensity = {mean_raw:.1f} (BRIGHTNESS_MIN=100, BRIGHTNESS_MAX=220, n={n})")
+
     if warnings:
         print("\n" + "=" * 90)
         print("LIVENESS FALSE REJECTION WARNINGS (POTENTIAL SOURCE MODEL REPRESENTATION BIAS)")

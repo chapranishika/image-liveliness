@@ -1,0 +1,14 @@
+filename,expected,caught_at_stage,screen_surface_status,screen_surface_value,screen_check_was_the_one_that_caught_it,overall_status
+screen_phone_photo_normal_10.jpg,attack,quality,pass,1.499,False,reject
+screen_tablet_photo_normal_11.jpg,attack,quality,pass,1.032,False,reject
+screen_tablet_photo_normal_12.jpg,attack,quality,pass,1.068,False,reject
+screen_tablet_photo_normal_13.jpg,attack,quality,pass,1.113,False,reject
+genuine_live_dark_blur_close_03.jpg,genuine,quality,fail,0.512,False,reject
+genuine_live_dark_far_04.jpg,genuine,quality,fail,0.682,False,reject
+genuine_live_dark_unfocused_05.jpg,genuine,quality,pass,1.909,False,reject
+genuine_live_dark_unfocused_06.jpg,genuine,quality,pass,1.858,False,reject
+genuine_live_dark_unfocused_07.jpg,genuine,quality,pass,2.008,False,reject
+genuine_live_dark_unfocused_08.jpg,genuine,quality,pass,1.965,False,reject
+genuine_live_dark_unfocused_09.jpg,genuine,quality,pass,2.137,False,reject
+genuine_live_good_lighting_close_01.jpg,genuine,quality,pass,1.016,False,reject
+genuine_live_good_lighting_far_02.jpg,genuine,quality,fail,0.651,False,reject

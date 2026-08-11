@@ -40,6 +40,15 @@ def check_passive_liveness(image, detector_backend="skip"):
     write the frame to a temporary file, since this is the most reliable way
     to guarantee consistent behavior across DeepFace versions.
 
+    Deliberately does NOT pre-crop to the face region before handing off to
+    DeepFace, even though get_embedding() in face_matching.py does exactly
+    that for the embedding/matching step. Tried pre-cropping here too, on
+    the theory that anti-spoofing models expect a face-filling input --
+    tested directly against a known-good live frame before trusting it, and
+    it flipped that frame from a clean pass (0.9954) to a fail (0.5124).
+    Reverted: whatever DeepFace's anti-spoofing model was actually trained
+    on, it is not a tightly-cropped face the way the embedding model wants.
+
     Returns a dict:
         {
             "check": "passive_liveness",

@@ -39,6 +39,31 @@ EAR_BLINK_THRESHOLD = 0.25     # EAR below this = eye considered closed (calibra
 BLINK_CONSEC_FRAMES_MIN = 2    # must stay below threshold for at least this many frames
 HEAD_TURN_HOLD_FRAMES = 5      # frames the yaw must stay in the target zone to count
 
+# HEAD_TURN_FLICKER_TOLERANCE: single-frame yaw estimation from solvePnP is
+# noisy -- more so with glasses, which can perturb landmark detection -- so
+# a sustained, correct head turn can still produce an occasional borderline
+# reading. Resetting the hold counter to zero on any single out-of-zone
+# reading would make the challenge feel like it hangs even while the turn
+# is held correctly (the same failure mode FLICKER_TOLERANCE=2 already
+# guards against for the quality-hold countdown in app/streamlit_app.py).
+# Tolerates up to this many consecutive out-of-zone/no-face readings
+# without losing hold progress.
+HEAD_TURN_FLICKER_TOLERANCE = 2
+
+# BLINK_TICK_CONSEC_FRAMES_MIN (tick path only): BLINK_CONSEC_FRAMES_MIN=2
+# was calibrated for the blocking version, which reads frames from
+# cv2.VideoCapture at ~20-30fps -- 2 consecutive frames there is
+# ~67-100ms, comfortably inside a real blink's ~150-400ms closed window.
+# The live app's tick path is fed by the frame-capture component's
+# periodic snapshots (~350ms apart, see app/frame_capture_component's
+# CAPTURE_INTERVAL_MS), so requiring 2 consecutive captures below threshold
+# would demand ~700ms of continuously-closed eyes -- longer than most real
+# blinks. One captured below-threshold frame at this cadence is already
+# good evidence of a genuine blink (a mis-detection blip is unlikely to
+# land exactly at the same instant a real capture fires), so
+# evaluate_blink_tick() uses this instead of BLINK_CONSEC_FRAMES_MIN.
+BLINK_TICK_CONSEC_FRAMES_MIN = 1
+
 
 def _euclidean(p1, p2):
     return np.sqrt((p1[0] - p2[0]) ** 2 + (p1[1] - p2[1]) ** 2)
@@ -210,10 +235,11 @@ def evaluate_blink_tick(frame, history):
     takes one frame plus the running history and returns the updated
     history plus a status, instead of looping internally.
 
-    Reuses the exact same EAR pipeline and thresholds (compute_ear,
-    RIGHT_EYE/LEFT_EYE, EAR_BLINK_THRESHOLD, BLINK_CONSEC_FRAMES_MIN,
-    get_landmarker) as the blocking version -- only the frame-source and
-    control flow differ, not the detection logic itself.
+    Reuses the same EAR pipeline (compute_ear, RIGHT_EYE/LEFT_EYE,
+    EAR_BLINK_THRESHOLD, get_landmarker) as the blocking version, but the
+    consecutive-frames-below-threshold requirement is BLINK_TICK_CONSEC_FRAMES_MIN,
+    not BLINK_CONSEC_FRAMES_MIN -- see that constant's comment for why the
+    much slower tick cadence here needs a different value.
 
     history: list of past avg_ear float samples (pass [] on the first tick
     of a new challenge attempt).
@@ -222,12 +248,9 @@ def evaluate_blink_tick(frame, history):
     """
     h, w = frame.shape[:2]
     # get_cached_landmarks() reuses the same detection result check_pose()
-    # (called earlier in the same live tick, via verify_pose_and_quality())
+    # (called earlier in the same tick, via verify_pose_and_quality())
     # already computed for this exact frame object -- avoids paying for a
     # second full MediaPipe landmark-detection pass on identical input.
-    # Confirmed measurably necessary: real live testing showed ~1 tick/sec
-    # instead of the designed ~12.5/sec, traced to this and the rPPG
-    # extraction each independently re-running detection on the same frame.
     results = get_cached_landmarks(frame, 0.5)
 
     if not results.face_landmarks:
@@ -255,7 +278,7 @@ def evaluate_blink_tick(frame, history):
                 prior_streak += 1
             else:
                 break
-        if prior_streak >= BLINK_CONSEC_FRAMES_MIN:
+        if prior_streak >= BLINK_TICK_CONSEC_FRAMES_MIN:
             return new_history, "pass"
 
     return new_history, "pending"
@@ -265,26 +288,46 @@ def evaluate_head_turn_tick(frame, history, direction="left"):
     """
     Single-frame, tick-compatible counterpart to run_head_turn_challenge().
     Reuses check_pose()'s solvePnP yaw (Day 8) and the same HEAD_TURN_HOLD_FRAMES
-    threshold logic as the blocking version.
+    threshold logic as the blocking version, plus HEAD_TURN_FLICKER_TOLERANCE
+    (see that constant's comment).
 
-    history: running count of consecutive in-target-zone ticks so far (pass
-    0 on the first tick of a new challenge attempt).
+    history: (hold_streak, miss_streak) tuple. hold_streak counts consecutive
+    in-target-zone ticks, tolerating up to HEAD_TURN_FLICKER_TOLERANCE
+    out-of-zone/no-face readings in a row without resetting; miss_streak
+    tracks how many of those tolerated misses have accumulated since the
+    last in-zone tick. Pass (0, 0) on the first tick of a new challenge
+    attempt.
 
     Returns (new_history, status) where status is "pending" or "pass".
     """
+    hold_streak, miss_streak = history
     pose_result = check_pose(frame)
     yaw = pose_result.get("yaw")
 
-    if yaw is None:
-        return 0, "pending"
-
-    in_target_zone = (
-        (direction == "left" and yaw < -25.0) or
-        (direction == "right" and yaw > 25.0)
+    # check_pose()'s yaw sign comes from solvePnP against the webcam's raw
+    # (non-mirrored) frame: a person's physical right turn moves their face
+    # toward what the un-mirrored image renders as its left side. "left"/
+    # "right" below refer to the user's actual physical turn direction, not
+    # raw image-left/image-right.
+    in_target_zone = yaw is not None and (
+        (direction == "left" and yaw > 25.0) or
+        (direction == "right" and yaw < -25.0)
     )
-    new_history = history + 1 if in_target_zone else 0
 
-    if new_history >= HEAD_TURN_HOLD_FRAMES:
+    if in_target_zone:
+        hold_streak += 1
+        miss_streak = 0
+    else:
+        miss_streak += 1
+        if miss_streak > HEAD_TURN_FLICKER_TOLERANCE:
+            # Tolerance exceeded -- this looks like a genuine interruption
+            # (looked away, walked off, real occlusion), not just sensor
+            # noise. Reset for real.
+            hold_streak = 0
+            miss_streak = 0
+
+    new_history = (hold_streak, miss_streak)
+    if hold_streak >= HEAD_TURN_HOLD_FRAMES:
         return new_history, "pass"
     return new_history, "pending"
 

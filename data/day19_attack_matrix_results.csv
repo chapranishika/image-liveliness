@@ -1,6 +1,6 @@
 filename,attack_type,expected,actual,caught_at_stage,reason
-frozen_001.jpg,Frozen Frame Attack,rejected,rejected,quality,score 61.9 below balanced threshold 70
+frozen_001.jpg,Frozen Frame Attack,rejected,rejected,quality,score 66.6 below balanced threshold 70
 multiple_001.jpg,Multiple Face Attack,rejected,rejected,quality,single_face check failed: no face detected
-printed_001.jpg,Photograph Attack,rejected,rejected,quality,score 43.7 below balanced threshold 70
-screen_001.jpg,Screen Replay Attack,rejected,rejected,quality,score 44.3 below balanced threshold 70
-video_001.jpg,Video Replay Attack,rejected,rejected,quality,score 30.2 below balanced threshold 70
+printed_001.jpg,Photograph Attack,rejected,rejected,quality,score 48.5 below balanced threshold 70
+screen_001.jpg,Screen Replay Attack,rejected,rejected,quality,score 51.0 below balanced threshold 70
+video_001.jpg,Video Replay Attack,rejected,rejected,quality,score 36.8 below balanced threshold 70

@@ -54,7 +54,7 @@ def clear_frame_cache_if_new(image):
         _DETECTION_CACHE_INSTANCE.clear()
         _LANDMARKER_CACHE_INSTANCE.clear()
 
-def get_cached_detections(image, min_confidence=0.5):
+def get_cached_detections(image, min_confidence=0.3):
     clear_frame_cache_if_new(image)
     key = min_confidence
     if key not in _DETECTION_CACHE_INSTANCE:
@@ -76,7 +76,7 @@ def get_cached_landmarks(image, min_confidence=0.5):
         _LANDMARKER_CACHE_INSTANCE[key] = landmarker.detect(mp_image)
     return _LANDMARKER_CACHE_INSTANCE[key]
 
-def get_detector(min_confidence=0.5):
+def get_detector(min_confidence=0.3):
     ensure_models_exist()
     if min_confidence not in _DETECTOR_CACHE:
         base_options = python.BaseOptions(model_asset_path=DETECTOR_MODEL_PATH)
@@ -136,7 +136,7 @@ DETECTION_CONFIDENCE_MIN = 0.80  # below this, flag possible occlusion
 MIN_FACE_WIDTH_PX = 100
 
 
-def check_single_face(image, min_confidence=0.5):
+def check_single_face(image, min_confidence=0.3):
     """
     Counts detected faces. Returns pass only when exactly one face is found.
     """
@@ -167,7 +167,11 @@ def check_single_face(image, min_confidence=0.5):
 def check_pose(image):
     """
     Uses solvePnP with the 4 landmarks (nose tip, chin, right/left eye outer
-    corners) to compute real yaw/pitch/roll in degrees.
+    corners) to compute real yaw/pitch/roll in degrees. Uses
+    get_cached_landmarks()'s default confidence (kept at 0.5, higher than
+    the basic face-presence detector) deliberately -- accurate landmark
+    positions matter directly here for the yaw/pitch/roll geometry, unlike
+    the coarser "is there a face" checks elsewhere.
     """
     h, w = image.shape[:2]
     results = get_cached_landmarks(image)
@@ -238,7 +242,7 @@ def check_pose(image):
     }
 
 
-def check_position(image, min_confidence=0.5):
+def check_position(image, min_confidence=0.3):
     """
     Checks the detected face's bounding box: is it reasonably centered,
     and does it occupy enough of the frame.
@@ -274,7 +278,7 @@ def check_position(image, min_confidence=0.5):
     }
 
 
-def check_resolution(image, min_confidence=0.5):
+def check_resolution(image, min_confidence=0.3):
     """
     Checks the detected face's bounding box width in absolute pixels --
     distinct from check_position()'s face_area_ratio, which only measures
@@ -302,11 +306,16 @@ def check_resolution(image, min_confidence=0.5):
     }
 
 
-def check_occlusion(image, min_confidence=0.5):
+def check_occlusion(image, min_confidence=0.3):
     """
     Approximate occlusion check. Flags possible occlusion if detection confidence is low,
-    OR if local sharpness around key facial regions (eyes, nose, mouth) is
-    unusually flat compared to the rest of the face.
+    if local sharpness around key facial regions (eyes, nose, mouth) is
+    unusually flat compared to the rest of the face (catches a hand, mask,
+    or smooth fabric), OR if a region is much darker than the rest of the
+    face (catches hair falling across the eyes/face -- hair has its own
+    fine texture, so it can score as "not flat" and slip past the variance
+    check alone, but it's reliably darker than the skin it's covering for
+    most hair colors against most skin tones).
     """
     h, w = image.shape[:2]
     det_results = get_cached_detections(image, min_confidence)
@@ -315,10 +324,18 @@ def check_occlusion(image, min_confidence=0.5):
         return {"check": "occlusion", "status": "fail", "reason": "no face detected"}
 
     detection_score = float(det_results.detections[0].categories[0].score)
+    bbox = det_results.detections[0].bounding_box
 
     mesh_results = get_cached_landmarks(image, min_confidence)
 
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+
+    fx0, fy0 = max(0, int(bbox.origin_x)), max(0, int(bbox.origin_y))
+    fx1 = min(w, int(bbox.origin_x + bbox.width))
+    fy1 = min(h, int(bbox.origin_y + bbox.height))
+    face_crop = gray[fy0:fy1, fx0:fx1]
+    face_mean_brightness = float(face_crop.mean()) if face_crop.size > 0 else None
+
     region_points = {
         "left_eye": LEFT_EYE_OUTER,
         "right_eye": RIGHT_EYE_OUTER,
@@ -326,6 +343,7 @@ def check_occlusion(image, min_confidence=0.5):
         "mouth_area": CHIN,  # approximate mouth-region proxy using chin-adjacent patch
     }
     patch_variances = {}
+    patch_means = {}
     if mesh_results.face_landmarks:
         landmarks = mesh_results.face_landmarks[0]
         for name, idx in region_points.items():
@@ -337,20 +355,31 @@ def check_occlusion(image, min_confidence=0.5):
             patch = gray[y0:y1, x0:x1]
             if patch.size > 0:
                 patch_variances[name] = float(patch.var())
+                patch_means[name] = float(patch.mean())
 
     low_variance_regions = [name for name, v in patch_variances.items() if v < 25.0]
+    DARK_ANOMALY_MARGIN = 35.0
+    dark_anomaly_regions = []
+    if face_mean_brightness is not None:
+        dark_anomaly_regions = [
+            name for name, m in patch_means.items()
+            if (face_mean_brightness - m) > DARK_ANOMALY_MARGIN
+        ]
 
     reasons = []
     if detection_score < DETECTION_CONFIDENCE_MIN:
         reasons.append(f"low detection confidence ({detection_score:.2f})")
     if low_variance_regions:
         reasons.append(f"flat texture near: {', '.join(low_variance_regions)}")
+    if dark_anomaly_regions:
+        reasons.append(f"unusually dark (possible hair/shadow) near: {', '.join(dark_anomaly_regions)}")
 
     status = "pass" if not reasons else "fail"
     return {
         "check": "occlusion",
         "detection_score": round(detection_score, 3),
         "patch_variances": {k: round(v, 1) for k, v in patch_variances.items()},
+        "face_mean_brightness": round(face_mean_brightness, 1) if face_mean_brightness is not None else None,
         "status": status,
         "reason": "; ".join(reasons) if reasons else "",
     }

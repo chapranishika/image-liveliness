@@ -50,8 +50,13 @@ def score_brightness(frame):
 def score_blur(frame):
     result = check_blur(frame)
     value = result["value"]
+    # Recalibrated from the original Day 7 curve (good=1200, worst=500),
+    # which hard-floored to a 0 score for genuinely in-focus captures under
+    # some real lighting/camera conditions. Sample-size caveat: based on a
+    # limited real-camera set, not a broad recalibration study -- same
+    # caveat as TEXTURE_UNIFORMITY_MIN's comment in quality_checks.py.
     return {"name": "blur", "raw_value": value,
-            "score": _linear_score(value, good_value=1200, acceptable_value=1000, worst_value=500)}
+            "score": _linear_score(value, good_value=450, acceptable_value=300, worst_value=150)}
 
 
 def score_pose(frame):
@@ -113,6 +118,45 @@ WEIGHTS = {
     "resolution": 0.05,   # new (brief Phase 2 Section 3) -- cheap statistical check, not meant to dominate
 }
 
+# Below this sub-score, a dimension is considered a genuine, callable-out
+# problem rather than just "not perfect" -- used to pick which of the 7
+# sub-scores to name in the user-facing message.
+_FLAG_CUTOFF = 55.0
+
+
+def _friendly_reason(sub_scores):
+    """
+    Turns the sub-score breakdown into a specific, plain-language sentence
+    naming the actual weakest dimension(s), instead of a generic
+    "score X below threshold Y" the person on the other end can't act on.
+    """
+    def brightness_msg(raw):
+        if raw is not None and raw < 100:
+            return "Lighting is too low — move to a brighter, more evenly lit area."
+        return "Lighting is too bright or glaring — step back from direct light."
+
+    messages = {
+        "brightness": brightness_msg,
+        "blur": lambda raw: "Image looks blurry — hold the camera steady and make sure the lens is clean.",
+        "pose": lambda raw: "Please face the camera directly, without turning your head.",
+        "position": lambda raw: "Move closer to the camera and center your face in the frame.",
+        "occlusion": lambda raw: "Your face looks partially covered — clear away hair, a mask, or anything blocking it.",
+        "contrast": lambda raw: "Lighting looks flat or washed out — try a more evenly lit background.",
+        "resolution": lambda raw: "Move closer to the camera for a clearer image.",
+    }
+
+    flagged = sorted(
+        ((name, s) for name, s in sub_scores.items() if s["score"] < _FLAG_CUTOFF),
+        key=lambda kv: kv[1]["score"],
+    )
+    if not flagged:
+        # Nothing individually bad enough to flag -- several dimensions are
+        # each just mediocre. Name the single weakest one anyway.
+        flagged = [min(sub_scores.items(), key=lambda kv: kv[1]["score"])]
+
+    sentences = [messages[name](s["raw_value"]) for name, s in flagged[:2]]
+    return " ".join(sentences)
+
 
 def compute_quality_score(frame, profile=None):
     profile_name = profile or ACTIVE_PROFILE
@@ -120,12 +164,19 @@ def compute_quality_score(frame, profile=None):
 
     face_check = check_single_face(frame)
     if face_check["status"] == "fail":
+        face_reason = face_check.get("reason", "")
+        if face_reason == "no face detected":
+            friendly = "No face detected — please make sure your face is visible to the camera."
+        elif "faces detected" in face_reason:
+            friendly = "More than one face is in view — make sure only you are in the frame."
+        else:
+            friendly = face_reason
         return {
             "overall_score": 0.0,
             "decision": "reject",
             "profile": profile_name,
             "threshold": profile_config["threshold"],
-            "reason": f"single_face check failed: {face_check.get('reason', '')}",
+            "reason": friendly,
             "sub_scores": {},
         }
 
@@ -149,6 +200,6 @@ def compute_quality_score(frame, profile=None):
         "decision": decision,
         "profile": profile_name,
         "threshold": profile_config["threshold"],
-        "reason": "" if decision == "accept" else f"score {overall} below {profile_name} threshold {profile_config['threshold']}",
+        "reason": "" if decision == "accept" else _friendly_reason(sub_results),
         "sub_scores": sub_results,
     }

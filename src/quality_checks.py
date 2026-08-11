@@ -118,6 +118,78 @@ def check_contrast(image):
     }
 
 
+# TEXTURE_UNIFORMITY_MIN calibrated against real measurements (Phase 3
+# screen-replay investigation, scratch/build_screen_replay_attack_videos.py):
+# local sharpness (Laplacian variance) measured in a 8x8 grid of 32x32
+# patches over a 256x256-resized frame, then the coefficient of variation
+# (std/mean) of those 64 patch-variances across the frame. Real skin has
+# uneven detail across a face -- sharp eyes/brows, smoother cheeks -- so
+# genuine captures show real spread between patches. A display's pixel-grid
+# resolution imposes a comparatively uniform sharpness ceiling across
+# whatever it's showing, so screen-replay content measures LOWER (more
+# spatially uniform) on this metric than genuine skin.
+# Real measured values:
+#   Genuine (5 real captures: front_001/002, left_001, right_001,
+#   different_001): 1.099-1.183 -- all clustered tight and high.
+#   Real screen-replay (screen_001.jpg laptop + its 5 sharpened/brightened/
+#   cropped derivatives from the Phase 3 attack videos, AND video_001.jpg,
+#   the real photographed phone-screen replay): 0.567-0.846 -- all well
+#   below the genuine cluster, and NOT restored back into it by the same
+#   sharpen+brighten adjustments that DO clear the blur/brightness quality
+#   sub-scores (confirmed: this signal survives the exact attacker
+#   optimization that defeats those two).
+#   Other real attack types, correctly NOT expected to trigger a screen-
+#   specific signal: printed_001.jpg (paper, not a screen) measured 1.041;
+#   frozen_001.jpg (a real direct photo standing in for a paused live feed,
+#   no print/screen artifact by design -- see data/Evaluation_Report.md
+#   Section 5.1) measured 0.956.
+# 0.90 sits in the gap between the worst real screen-replay case (0.846)
+# and the closest real non-screen case (frozen_001 at 0.956), with margin
+# on both sides.
+# Sample size caveat, disclosed honestly: only TWO independent real
+# screen-replay base captures exist in this project (screen_001.jpg,
+# video_001.jpg) -- the other 5 "screen-replay" values above are
+# photometric derivatives of screen_001.jpg, not independent real captures.
+# This is the same real-data-availability constraint documented in
+# data/Evaluation_Report.md Section 5.1 for the passive-liveness expanded
+# eval. A genuinely different physical screen/monitor, lighting setup, or
+# distance has not been tested against this threshold.
+TEXTURE_UNIFORMITY_MIN = 0.90   # below this = unnaturally uniform surface texture (possible screen replay)
+
+
+def check_screen_surface_texture(image):
+    """
+    Cheap, non-ML supplementary signal for screen-replay detection -- same
+    pattern as check_contrast()/is_frame_corrupted(), not a second heavy
+    model. Distinct from and additional to passive liveness (MiniFASNet):
+    this measures a different, simpler property (spatial uniformity of
+    local sharpness) and is meant to catch what an attacker's sharpen/
+    brighten adjustment to clear the blur/brightness quality sub-scores
+    does NOT also fix -- see TEXTURE_UNIFORMITY_MIN's calibration comment.
+    """
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY) if len(image.shape) == 3 else image
+    gray = cv2.resize(gray, (256, 256)).astype(np.float64)
+    lap = cv2.Laplacian(gray, cv2.CV_64F)
+
+    patch = 32
+    local_vars = []
+    for y in range(0, 256, patch):
+        for x in range(0, 256, patch):
+            local_vars.append(lap[y:y + patch, x:x + patch].var())
+    local_vars = np.array(local_vars)
+
+    uniformity = float(local_vars.std() / (local_vars.mean() + 1e-6))
+    status = "pass" if uniformity >= TEXTURE_UNIFORMITY_MIN else "fail"
+    reason = "" if status == "pass" else "unnaturally uniform surface texture (possible screen replay)"
+
+    return {
+        "check": "screen_surface_texture",
+        "value": round(uniformity, 3),
+        "status": status,
+        "reason": reason,
+    }
+
+
 def is_frame_corrupted(image):
     """
     Cheap, non-ML sanity check for macroblock/decode corruption -- distinct
