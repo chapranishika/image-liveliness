@@ -182,9 +182,14 @@ def run_quality_and_liveness_stage(frame, run_active_challenge=True, preferred_c
     }
 
 
-# Calibrated operational matching threshold defaults to 0.40. This guarantees high security (low FAR = 0.34%)
-# in production, while maintaining convenience (FRR = 15.24%) under live verification workflows.
-def verify(frame, stored_templates, run_active_challenge=True, match_threshold=0.40, preferred_challenge=None, profile=None):
+# Calibrated operational matching threshold defaults to 0.38 -- re-swept
+# against the real CFP+self-collected frontal calibration data behind
+# data/Evaluation_Report.md Section 3 (see
+# scratch/sweep_matching_threshold.py): 0.38 gives the same FAR (0.34%) as
+# the previous 0.40 default while rejecting one fewer genuine user out of
+# 106 (FRR 14.15% vs 15.09%). Kept in sync with app/streamlit_app.py's
+# matching_threshold, which is what the live app actually passes in here.
+def verify(frame, stored_templates, run_active_challenge=True, match_threshold=0.38, preferred_challenge=None, profile=None):
     """
     Day 15: The complete pipeline, matching Diagram 1 end to end.
 

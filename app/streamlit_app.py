@@ -179,10 +179,15 @@ if "selected_profile" not in st.session_state:
 selected_profile = st.session_state.selected_profile
 os.environ["QUALITY_PROFILE"] = selected_profile
 
-# Calibrated operational matching threshold. Set to 0.40 based on frontal-only calibration
-# to guarantee an extremely low False Acceptance Rate (FAR = 0.34%) for high security, 
-# while maintaining user convenience (FRR = 15.24%).
-matching_threshold = 0.40
+# Calibrated operational matching threshold. Re-swept across candidate
+# values against the same real CFP+self-collected frontal calibration data
+# behind data/Evaluation_Report.md Section 3 (see
+# scratch/sweep_matching_threshold.py) -- 0.38 gives the identical FAR
+# (0.34%, same 2/595 impostors accepted as 0.40) while rejecting one fewer
+# genuine user (FRR 14.15%, 15/106, vs 0.40's 15.09%, 16/106). Strictly
+# dominates the previous 0.40 default in this data: same security, less
+# friction, not a security-for-convenience trade.
+matching_threshold = 0.38
 target_threshold = QUALITY_PROFILES[selected_profile]["threshold"]
 
 # ---------------------------------------------------------

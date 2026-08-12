@@ -8,7 +8,7 @@
 ## 1. Executive Summary
 This report summarizes the performance metrics, thresholds, and boundary profiles calibrated across the full framework. The metrics describe a 4-stage pipeline (Quality Scorer -> Passive Liveness -> Face Embedding -> Template Matching) built with local databases, Fernet encryption at rest, sliding rate-limiters, and accessibility challenge fallbacks.
 
-* **Deployed Face Matching Cosine Similarity Threshold:** `0.40` (Specifically calibrated for Frontal-vs-Frontal)
+* **Deployed Face Matching Cosine Similarity Threshold:** `0.38` (Specifically calibrated for Frontal-vs-Frontal; updated 2026-08-13 from 0.40, see Section 3.1)
 * **Deployed Passive Antispoofing Score Threshold:** `0.90` (ACER: `0.230` on the expanded n=76/n=75 sample — see Section 5; APCER is uneven across attack types, not a single clean number)
 * **Default Deployed Quality Score Preset:** `Balanced` (Score threshold >= 70%)
 
@@ -34,15 +34,30 @@ Production verification strictly prompts for and captures a frontal face image. 
 * **Equal Error Rate (EER):** `0.0319` (3.19%) at EER-optimal threshold `0.2642`
 * **ROC Area Under Curve (AUC):** `0.9953`
 
-At the **deployed operational threshold of 0.40** (deliberately chosen to prioritize security while maintaining convenience):
+At the **deployed operational threshold of 0.38** (updated from 0.40, see 3.1 below):
 * **False Accept Rate (FAR):** `0.34%` (2/595)
-* **False Reject Rate (FRR):** `15.09%` (16/106)
-* **Half Total Error Rate (HTER):** `7.72%`
+* **False Reject Rate (FRR):** `14.15%` (15/106)
+* **Half Total Error Rate (HTER):** `7.24%`
 
-$$\text{HTER} = \frac{\text{FAR} + \text{FRR}}{2} = \frac{0.0034 + 0.1509}{2} = 0.0772$$
+$$\text{HTER} = \frac{\text{FAR} + \text{FRR}}{2} = \frac{0.0034 + 0.1415}{2} = 0.0724$$
 
 ### Calibrated Operational Rationale:
-The EER-optimal threshold of `0.2642` is not used in production because a False Acceptance Rate of `3.19%` is too high for security-critical environments. Setting the threshold to `0.40` forces a near-zero False Acceptance Rate (`0.34%`), meaning impostors are rejected with absolute certainty. The corresponding `15.09%` False Rejection Rate is easily tolerated in the live streaming UI, as the user is automatically verified within milliseconds once a high-quality frame passes the matching criteria.
+The EER-optimal threshold of `0.2642` is not used in production because a False Acceptance Rate of `3.19%` is too high for security-critical environments. Setting the threshold to `0.38` forces a near-zero False Acceptance Rate (`0.34%`), meaning impostors are rejected with absolute certainty. The corresponding `14.15%` False Rejection Rate is easily tolerated in the live streaming UI, as the user is automatically verified within milliseconds once a high-quality frame passes the matching criteria.
+
+### 3.1 Threshold sweep (2026-08-13): 0.40 was not actually the best point on its own curve
+Section 3's operational numbers were only ever reported at the single deployed point (0.40) — never swept across candidate values the way the passive-liveness threshold is in Section 5.1.2. `scratch/sweep_matching_threshold.py` reruns the exact same real data-building logic as this section (same CFP identities, same self-collected frontal images, same embedding pipeline — confirmed by reproducing the 0.40 row exactly: FAR 0.34% (2/595), FRR 15.09% (16/106), matching the previous version of this report bit for bit) across a range of thresholds:
+
+| Threshold | FAR | FRR | HTER | Impostors accepted | Genuine rejected |
+|---|---|---|---|---|---|
+| 0.264 (EER-optimal) | 3.36% | 2.83% | 3.10% | 20/595 | 3/106 |
+| 0.30 | 2.02% | 4.72% | 3.37% | 12/595 | 5/106 |
+| 0.34 | 1.01% | 9.43% | 5.22% | 6/595 | 10/106 |
+| 0.36 | 0.84% | 10.38% | 5.61% | 5/595 | 11/106 |
+| **0.38 (now deployed)** | **0.34%** | **14.15%** | **7.24%** | **2/595** | **15/106** |
+| 0.40 (previous default) | 0.34% | 15.09% | 7.72% | 2/595 | 16/106 |
+| 0.42 | 0.17% | 16.98% | 8.57% | 1/595 | 18/106 |
+
+**The finding:** 0.38 gives the *identical* FAR as 0.40 (same 2/595 impostors accepted — no security cost) while rejecting one fewer genuine user (15/106 vs 16/106). 0.40 was strictly dominated by 0.38 in this data — same security, more friction, for no reason. The deployed threshold has been moved to 0.38 (`app/streamlit_app.py`'s `matching_threshold`, `src/pipeline.py`'s `verify()` default) on that basis. 0.36 and below are real, disclosed security-for-convenience trades (lower FRR, but a real, non-zero rise in FAR) — not applied, since they change what the system is actually willing to accept, not just where a tie is broken. Same n=106 genuine / n=595 impostor pairs as the rest of this section — small enough that these percentages have real sampling noise (±3-4 points on FRR is plausible at this n), not precise to the reported decimal.
 
 ---
 
