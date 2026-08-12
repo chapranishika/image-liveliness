@@ -24,6 +24,17 @@ HIGH_FREQ_HZ = 4.0
 # Calibrated peak prominence threshold based on genuine vs spoof separation
 PEAK_PROMINENCE_MIN = 30.0
 
+# Nyquist's theorem sets a hard floor: a bandpass filter targeting
+# LOW_FREQ_HZ needs a sample rate of at least 2 * LOW_FREQ_HZ just to
+# represent that frequency at all, and butter()'s Wn must stay strictly
+# below 1.0 (i.e. strictly below the Nyquist frequency), not just reach it.
+# 1.3x that theoretical minimum leaves enough headroom for the low cutoff
+# to sit meaningfully inside (0, 1) rather than pinned at its edge, where a
+# 3rd-order Butterworth filter becomes numerically unstable.
+# Below this, there's no fps fix within this function -- the sample rate
+# itself is too low for a heart-rate signal, full stop.
+MIN_FPS_FOR_ANY_SIGNAL = LOW_FREQ_HZ * 2 * 1.3
+
 
 def _extract_forehead_roi(frame, landmarks):
     h, w = frame.shape[:2]
@@ -39,9 +50,26 @@ def _extract_forehead_roi(frame, landmarks):
 
 
 def _bandpass_filter(signal, fps):
+    """
+    Raises ValueError (caller catches it) if fps is too low to represent
+    even the bottom of the target band -- see MIN_FPS_FOR_ANY_SIGNAL.
+    Otherwise clamps the high cutoff to what this fps can actually
+    represent instead of always requesting the full clinical band (up to
+    240bpm): a real, narrower band beats an outright filter-design failure
+    when the live capture rate only covers part of it. This matters in
+    practice -- the live app's frame-capture component pushes at most one
+    new frame every 350ms (2.86 fps), and measured real-world delivery has
+    been well below even that (see debug log: 0.52-0.92 fps), both of
+    which sit under HIGH_FREQ_HZ's required 8fps Nyquist rate.
+    """
     nyquist = fps / 2.0
+    if nyquist <= MIN_FPS_FOR_ANY_SIGNAL / 2.0:
+        raise ValueError(
+            f"sample rate too low for any heart-rate signal: {fps:.2f} fps "
+            f"(need at least {MIN_FPS_FOR_ANY_SIGNAL:.2f} fps)"
+        )
     low = LOW_FREQ_HZ / nyquist
-    high = HIGH_FREQ_HZ / nyquist
+    high = min(HIGH_FREQ_HZ, nyquist * 0.95) / nyquist
     b, a = butter(N=3, Wn=[low, high], btype="band")
     return filtfilt(b, a, signal)
 
@@ -85,7 +113,11 @@ def check_rppg_liveness_from_samples(green_samples, fps_estimate=20.0):
     tick-by-tick from the WebRTC feed and evaluate them the same way an
     offline frame folder is evaluated -- same thresholds, same math.
     """
-    if len(green_samples) < int(fps_estimate * 5):
+    # fps_estimate * 5 (~5 seconds' worth) is the intended floor, but at a
+    # very low real fps_estimate that ratio alone rounds to almost nothing
+    # (e.g. 2 samples at 0.52 fps) -- nowhere near enough for the FFT below
+    # to resolve a real peak. 20 is an absolute floor under that ratio.
+    if len(green_samples) < max(int(fps_estimate * 5), 20):
         return {"check": "rppg", "status": "error",
                 "reason": f"too few usable samples ({len(green_samples)}) for a reliable signal"}
 
@@ -94,6 +126,8 @@ def check_rppg_liveness_from_samples(green_samples, fps_estimate=20.0):
 
     try:
         filtered = _bandpass_filter(signal, fps_estimate)
+    except ValueError as e:
+        return {"check": "rppg", "status": "error", "reason": str(e)}
     except Exception as e:
         return {"check": "rppg", "status": "error", "reason": f"bandpass filter failed: {e}"}
 

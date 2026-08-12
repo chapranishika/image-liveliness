@@ -142,13 +142,17 @@ class FrameGrabber:
         self.latest_frame = None
         # JS-side capture timestamp (ms) of latest_frame, set alongside it
         # whenever a genuinely new frame is decoded. The frame-capture
-        # component only pushes a new frame_b64 every ~700ms, but this
-        # fragment can rerun far faster (up to 12.5/sec) and re-decodes the
-        # same still-cached component value each of those ticks -- so
-        # latest_frame gets a fresh ndarray object every tick even when the
-        # underlying image hasn't changed. latest_frame_ts lets callers that
-        # care about genuinely distinct samples (rPPG) detect and skip those
-        # repeats instead of treating ~9 duplicate frames as 9 real samples.
+        # component's own push interval is 350ms (CAPTURE_INTERVAL_MS in
+        # frame_capture_component/index.html), but the real bottleneck is
+        # this fragment's own per-tick Python processing, not the JS push
+        # rate -- measured live via DEBUG_CHALLENGE logging (see rPPG's
+        # real_fps in scratch/debug_challenge.log) at roughly 0.5-0.9
+        # distinct frames/sec during the active-challenge phase, well under
+        # both the 12.5/sec nominal design and the 350ms JS ceiling.
+        # latest_frame_ts lets callers that care about genuinely distinct
+        # samples (rPPG) detect and skip repeats instead of treating several
+        # duplicate frames (re-decoded from the same still-cached component
+        # value on faster ticks) as that many real samples.
         self.latest_frame_ts = None
         # guide_state/guide_arrow/guide_pct drive the overlay guide (oval,
         # turn arrows, progress ring), passed as args into the frame-capture
@@ -1081,8 +1085,19 @@ def render_camera_card():
                     if _ss_res["status"] == "fail":
                         st.session_state.challenge_screen_surface_fail_count += 1
 
+                    # Throttle window widened from 1.0s to 2.0s: this
+                    # interval only throttles anything if it's longer than
+                    # the tick period it's gating. Live measurement (rPPG's
+                    # real_fps in scratch/debug_challenge.log) showed the
+                    # actual tick period during this phase already runs
+                    # ~1.1-1.9s -- meaning the old 1.0s window let MiniFASNet
+                    # (125-550ms/call) fire on nearly every tick instead of
+                    # actually throttling it, which was itself a real
+                    # contributor to that same slow tick rate. Still gives
+                    # ~10 samples over a 20s challenge window, plenty for the
+                    # >=2-sample majority vote below.
                     _pl_last_ts = st.session_state.challenge_passive_liveness_last_sample_ts
-                    if _pl_last_ts is None or (time.time() - _pl_last_ts) >= 1.0:
+                    if _pl_last_ts is None or (time.time() - _pl_last_ts) >= 2.0:
                         st.session_state.challenge_passive_liveness_last_sample_ts = time.time()
                         _pl_res = check_passive_liveness(latest_img)
                         st.session_state.challenge_passive_liveness_sample_count += 1
