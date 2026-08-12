@@ -64,7 +64,7 @@ from src.quality_score import compute_quality_score, QUALITY_PROFILES
 from src.quality_checks_day8_9 import check_pose, check_single_face
 from src.quality_checks import check_screen_surface_texture
 from src.liveness_passive import check_passive_liveness
-from src.liveness_active import evaluate_blink_tick, evaluate_head_turn_tick
+from src.liveness_active import evaluate_blink_tick, evaluate_head_turn_tick, check_frame_loop_signature
 from src.rppg import extract_green_mean_from_frame, check_rppg_liveness_from_samples
 
 # Actual tick rate varies with system load rather than sitting at a fixed
@@ -496,15 +496,49 @@ def _render_action_error_banner():
     err = st.session_state.get("action_error")
     if err:
         st.markdown(
-            f'<div style="background: #FEF2F2; border-left: 4px solid #DC2626; '
-            f'padding: 12px 16px; border-radius: 8px; font-size: 0.9rem; '
-            f'color: #DC2626; margin-bottom: 1rem; font-weight: 600;">'
-            f'✗ {err}</div>',
+            f'<div class="app-alert-box error">✗ {err}</div>',
             unsafe_allow_html=True,
         )
 
 
+def _capture_enrollment_photo(latest_img, profile_name, liveness_blocking):
+    """
+    Single, self-gated entry point for finalizing a Guided Enrollment
+    capture -- used by both the automatic flow and the manual fallback
+    button, same structural-safety-net reasoning as run_verification_logic()
+    above: requires active_challenge_passed internally rather than trusting
+    every caller to have checked first.
+
+    Returns the same shape verify_pose_and_quality() does (a "pending"/
+    "fail" dict, or the pass dict) so existing call-site status handling
+    doesn't need to change -- a blocked gate is reported as "fail" with an
+    actionable reason, not a new status value callers would need to learn.
+    """
+    if not st.session_state.get("active_challenge_passed", False):
+        return {"status": "fail", "reason": "Please complete the blink or head-turn prompt above before capturing."}
+    check_res = verify_pose_and_quality(latest_img, profile_name, check_liveness=True, liveness_blocking=liveness_blocking)
+    st.session_state.antispoof_last_status = check_res.get("liveness_result", {}).get("status", "pending")
+    return check_res
+
+
 def run_verification_logic(latest_img, profile_name):
+    # Structural safety net (Breach 1B): every current caller already
+    # checks active_challenge_passed before calling this, but that relies
+    # on each caller remembering to -- exactly the pattern that let two
+    # buttons bypass the active-liveness challenge earlier in this
+    # project. Checking it again here, inside the one function that can
+    # actually trigger a verification decision, means a bypass of this
+    # specific kind cannot happen again even from a future caller that
+    # forgets to check first.
+    if not st.session_state.get("active_challenge_passed", False):
+        st.session_state.verify_face_detected = False
+        st.session_state.verify_outcome = {
+            "status": "fail",
+            "stage": "active_liveness",
+            "reason": "Please complete the blink or head-turn prompt above before verifying.",
+        }
+        return
+
     latest_img = _get_sane_frame_or_retry(latest_img)
     if latest_img is None:
         # Retries exhausted -- this is a transient camera/connection
@@ -934,6 +968,34 @@ def render_camera_card():
                     # run yet this time.
                     st.session_state.rppg_last_status = "pending"
                     st.session_state.antispoof_last_status = "pending"
+                    # Replay-signature evidence (loop detector + screen-
+                    # surface texture) also starts fresh per attempt --
+                    # accumulated across the whole challenge window, checked
+                    # at the moment the gesture itself would otherwise pass.
+                    st.session_state.challenge_frame_loop_buffer = []
+                    st.session_state.challenge_screen_surface_fail_count = 0
+                    st.session_state.challenge_screen_surface_sample_count = 0
+                    # Passive liveness (MiniFASNet, the same trained
+                    # anti-spoof model used at final capture) sampled a few
+                    # times during the challenge too -- added after live
+                    # testing found a physically-tilted photo/phone defeats
+                    # the loop/screen-surface checks above (no repeated
+                    # frame content to catch, since the attacker is
+                    # continuously moving it by hand), but a trained
+                    # spoof-classifier has a real chance of reading texture/
+                    # reflection cues those simpler checks can't see.
+                    # Throttled to roughly once/second (not every tick like
+                    # the cheap checks above) via the timestamp below -- a
+                    # real model inference, measured at ~125-550ms per call,
+                    # not a few-millisecond heuristic. This is a genuine,
+                    # disclosed trade-off: a brief once-per-second hitch in
+                    # the live feed during the challenge window, in exchange
+                    # for a real trained classifier's opinion rather than
+                    # only frame-diff heuristics.
+                    st.session_state.challenge_passive_liveness_fail_count = 0
+                    st.session_state.challenge_passive_liveness_sample_count = 0
+                    st.session_state.challenge_passive_liveness_last_sample_ts = None
+                    st.session_state.enroll_antispoof_retry_count = 0
                     # Verify Identity also starts collecting an rPPG (Layer
                     # 3) sample buffer from this same moment, running
                     # concurrently rather than as a separate wait -- by the
@@ -1003,6 +1065,30 @@ def render_camera_card():
                             st.session_state.rppg_samples.append(green_mean)
                         st.session_state.rppg_last_sampled_ts = _cur_frame_ts
 
+                # Replay-signature evidence (Breach 1A: a canned/looped
+                # recording could otherwise satisfy the geometric blink/turn
+                # check on its own). Accumulated every tick across the whole
+                # challenge window, not just at the pass instant, so there's
+                # a real evidence base by the time the gesture would
+                # otherwise pass -- see check_frame_loop_signature()'s
+                # docstring for the false-positive-avoidance reasoning.
+                if not st.session_state.active_challenge_passed:
+                    st.session_state.challenge_frame_loop_buffer, _loop_suspicious, _loop_match_count = check_frame_loop_signature(
+                        latest_img, st.session_state.challenge_frame_loop_buffer
+                    )
+                    _ss_res = check_screen_surface_texture(latest_img)
+                    st.session_state.challenge_screen_surface_sample_count += 1
+                    if _ss_res["status"] == "fail":
+                        st.session_state.challenge_screen_surface_fail_count += 1
+
+                    _pl_last_ts = st.session_state.challenge_passive_liveness_last_sample_ts
+                    if _pl_last_ts is None or (time.time() - _pl_last_ts) >= 1.0:
+                        st.session_state.challenge_passive_liveness_last_sample_ts = time.time()
+                        _pl_res = check_passive_liveness(latest_img)
+                        st.session_state.challenge_passive_liveness_sample_count += 1
+                        if _pl_res["status"] == "fail":
+                            st.session_state.challenge_passive_liveness_fail_count += 1
+
                 if not st.session_state.active_challenge_passed:
                     challenge_type = st.session_state.active_challenge_type
                     challenge_elapsed = time.time() - st.session_state.active_challenge_start
@@ -1027,12 +1113,78 @@ def render_camera_card():
                             _f.write(f"{time.time():.3f} view={st.session_state.active_view} type={challenge_type} elapsed={challenge_elapsed:.2f} status={challenge_status} hist={new_hist}\n")
 
                     if challenge_status == "pass":
-                        st.session_state.active_challenge_passed = True
-                        st.session_state.active_challenge_type = None
-                        st.session_state.active_challenge_history = None
+                        # Gesture geometry passed -- also require the
+                        # accumulated replay-signature evidence from this
+                        # same attempt to not indicate a loop/screen replay
+                        # before accepting it as a genuine pass. A suspected
+                        # replay is treated exactly like a timed-out round
+                        # (retry the same gesture, only hard-fail once
+                        # MAX_CHALLENGE_ROUNDS is exhausted) rather than an
+                        # immediate hard rejection -- these signals are not
+                        # independently validated against a real staged
+                        # attack (see check_frame_loop_signature()'s
+                        # docstring), so a false positive should cost a
+                        # genuine user one retry, not the whole attempt.
+                        _ss_samples = st.session_state.challenge_screen_surface_sample_count
+                        _ss_fails = st.session_state.challenge_screen_surface_fail_count
+                        # NOT a replay_suspected input (see below) -- still
+                        # measured and logged for visibility, just no longer
+                        # trusted to gate anything.
+                        _pl_samples = st.session_state.challenge_passive_liveness_sample_count
+                        _pl_fails = st.session_state.challenge_passive_liveness_fail_count
+                        # Lower sample-count floor than screen-surface's old
+                        # one (2, not 5) since passive liveness only gets
+                        # one sample per second, not every tick -- a short-
+                        # lived challenge attempt might only collect 2-3
+                        # samples total, and a trained spoof classifier
+                        # failing even a couple of real samples is stronger
+                        # evidence than a cheap heuristic needs to reach the
+                        # same confidence.
+                        _pl_majority_fail = _pl_samples >= 2 and (_pl_fails / _pl_samples) > 0.5
+                        # screen_surface_texture deliberately dropped from
+                        # this decision: tested against the real attack/
+                        # genuine images in data/self_collected/session_2/
+                        # (scratch/calibrate_replay_checks_on_real_images.py)
+                        # and measured 0/4 attacks caught, 3/9 genuine
+                        # images false-flagged -- pure false-positive risk
+                        # with zero measured benefit on real data, not a
+                        # borderline judgment call. passive_liveness on the
+                        # same real images measured 4/4 attacks caught
+                        # (encouraging) but 2/9 genuine false-flagged (a
+                        # real single-frame noise rate, which is exactly why
+                        # this stays a majority-vote over multiple samples
+                        # rather than a single-frame gate, and a suspected
+                        # replay still only costs a retry, not a hard fail).
+                        _replay_suspected = _loop_suspicious or _pl_majority_fail
+
                         if os.environ.get("DEBUG_CHALLENGE"):
                             with open("scratch/debug_challenge.log", "a") as _f:
-                                _f.write(f"{time.time():.3f} *** CHALLENGE PASSED ***\n")
+                                _f.write(f"{time.time():.3f} challenge geometry passed -- loop_suspicious={_loop_suspicious} loop_matches={_loop_match_count} ss_fail_ratio={_ss_fails}/{_ss_samples} pl_fail_ratio={_pl_fails}/{_pl_samples} replay_suspected={_replay_suspected}\n")
+
+                        if _replay_suspected:
+                            if st.session_state.active_challenge_round < MAX_CHALLENGE_ROUNDS:
+                                st.session_state.active_challenge_round += 1
+                                st.session_state.active_challenge_history = [] if challenge_type == "blink" else (0, 0)
+                                st.session_state.active_challenge_start = time.time()
+                                st.session_state.challenge_frame_loop_buffer = []
+                                st.session_state.challenge_screen_surface_fail_count = 0
+                                st.session_state.challenge_screen_surface_sample_count = 0
+                                st.session_state.challenge_passive_liveness_fail_count = 0
+                                st.session_state.challenge_passive_liveness_sample_count = 0
+                                st.session_state.challenge_passive_liveness_last_sample_ts = None
+                            else:
+                                _fail_active_challenge(
+                                    "We couldn't confirm a live camera feed. Please make sure you're using your own live camera, not a photo, video, or screen, and try again.",
+                                    stage="active_liveness",
+                                    technical_reason=f"active_liveness check failed: replay signal suspected (loop_matches={_loop_match_count}, screen_surface_fail_ratio={_ss_fails}/{_ss_samples}, passive_liveness_fail_ratio={_pl_fails}/{_pl_samples}), {MAX_CHALLENGE_ROUNDS} rounds attempted",
+                                )
+                        else:
+                            st.session_state.active_challenge_passed = True
+                            st.session_state.active_challenge_type = None
+                            st.session_state.active_challenge_history = None
+                            if os.environ.get("DEBUG_CHALLENGE"):
+                                with open("scratch/debug_challenge.log", "a") as _f:
+                                    _f.write(f"{time.time():.3f} *** CHALLENGE PASSED ***\n")
                     elif challenge_elapsed >= ACTIVE_CHALLENGE_TIMEOUT_S:
                         if os.environ.get("DEBUG_CHALLENGE"):
                             with open("scratch/debug_challenge.log", "a") as _f:
@@ -1092,12 +1244,16 @@ def render_camera_card():
                             st.session_state.rppg_last_status = rppg_res["status"]
                             st.session_state.rppg_samples = None
                             st.session_state.rppg_collect_start = None
-                            st.session_state.countdown_start = None
-                            st.session_state.active_challenge_passed = False
                             st.session_state.motion_challenge_display_status = "pass"
-                            st.session_state.active_challenge_round = None
                             st.session_state.flash_end_time = time.time() + 0.6
                             st.session_state.play_sound_trigger = True
+                            # Regression found via live testing: run_verification_logic()
+                            # checks active_challenge_passed internally (the Breach 1B
+                            # structural gate) -- it must still be True when called, so
+                            # the reset that prepares clean state for the NEXT attempt
+                            # has to happen AFTER this call, not before. Resetting first
+                            # (the order this block used before that gate existed) made
+                            # every real Verify Identity attempt fail its own gate.
                             try:
                                 run_verification_logic(latest_img, active_prof)
                             except Exception as e:
@@ -1108,6 +1264,9 @@ def render_camera_card():
                                     "stage": "internal_error",
                                     "reason": str(e),
                                 }
+                            st.session_state.countdown_start = None
+                            st.session_state.active_challenge_passed = False
+                            st.session_state.active_challenge_round = None
                             if os.environ.get("DEBUG_CHALLENGE"):
                                 with open("scratch/debug_challenge.log", "a") as _f:
                                     _f.write(f"{time.time():.3f} *** run_verification_logic DONE *** verify_outcome={st.session_state.get('verify_outcome')}\n")
@@ -1142,33 +1301,41 @@ def render_camera_card():
                             check_res = {"status": "pending"}
                         else:
                             st.session_state.enroll_frontal_wait_start = None
-                            # Run strict quality verification at capture time.
-                            # liveness_blocking=False: repeated live testing
-                            # showed the passive anti-spoof model
-                            # (MiniFASNet) genuinely false-rejecting live
-                            # faces here -- confirmed directly (a captured
-                            # frame scored 0.9954/"real" when tested
-                            # standalone) rather than assumed. Still run and
-                            # recorded (antispoof_last_status feeds the
-                            # checklist dot honestly), but doesn't block
-                            # registration on its own here: a stored
-                            # template isn't itself an accept/reject
-                            # identity decision the way a Verify Identity
-                            # match is, where this same check stays a hard
-                            # gate.
-                            check_res = verify_pose_and_quality(latest_img, active_prof, check_liveness=True, liveness_blocking=False)
-                            st.session_state.antispoof_last_status = check_res.get("liveness_result", {}).get("status", "pending")
+                            check_res = _capture_enrollment_photo(latest_img, active_prof, liveness_blocking=True)
                         if check_res["status"] == "pending":
                             pass
                         elif check_res["status"] == "fail":
-                            st.session_state.countdown_start = None
-                            st.session_state.active_challenge_passed = False
-                            st.session_state.motion_challenge_display_status = "pending"
-                            st.session_state.active_challenge_round = None
-                            st.session_state.flash_end_time = None
-                            st.error(check_res["reason"])
-                            time.sleep(1.5)
+                            # A single antispoof reading is noisy enough
+                            # (see check_passive_liveness()'s calibration
+                            # notes) that treating it exactly like a real
+                            # quality failure -- wiping out an already-
+                            # completed blink/turn challenge and forcing a
+                            # full redo -- was frustrating enough in real
+                            # testing that this check was made non-blocking
+                            # entirely for a while. Restored as a real gate,
+                            # but a bounded number of quick recapture
+                            # attempts are given first (same frontal pose,
+                            # same passed gesture, just a fresh frame) before
+                            # treating it as a genuine rejection -- a real
+                            # spoof will keep failing across retries; a
+                            # single noisy live reading usually won't.
+                            _is_antispoof_fail = check_res.get("liveness_result", {}).get("status") == "fail"
+                            _antispoof_retries = st.session_state.get("enroll_antispoof_retry_count", 0)
+                            ENROLL_ANTISPOOF_MAX_RETRIES = 2
+                            if _is_antispoof_fail and _antispoof_retries < ENROLL_ANTISPOOF_MAX_RETRIES:
+                                st.session_state.enroll_antispoof_retry_count = _antispoof_retries + 1
+                                instructions_text = "One moment, refining the capture..."
+                            else:
+                                st.session_state.countdown_start = None
+                                st.session_state.active_challenge_passed = False
+                                st.session_state.motion_challenge_display_status = "pending"
+                                st.session_state.active_challenge_round = None
+                                st.session_state.flash_end_time = None
+                                st.session_state.enroll_antispoof_retry_count = 0
+                                st.error(check_res["reason"])
+                                time.sleep(1.5)
                         else:
+                            st.session_state.enroll_antispoof_retry_count = 0
                             st.session_state.countdown_start = None
                             st.session_state.active_challenge_passed = False
                             st.session_state.motion_challenge_display_status = "pass"
@@ -1310,8 +1477,7 @@ def render_camera_card():
                     run_verification_logic(latest_img, active_prof)
                     st.rerun()
                 else:
-                    check_res = verify_pose_and_quality(latest_img, active_prof, check_liveness=True)
-                    st.session_state.antispoof_last_status = check_res.get("liveness_result", {}).get("status", "pending")
+                    check_res = _capture_enrollment_photo(latest_img, active_prof, liveness_blocking=True)
                     if check_res["status"] == "fail":
                         st.error(check_res["reason"])
                     else:
@@ -1449,7 +1615,7 @@ with col_actions:
                     explain_quality_failure(outcome["reason"], outcome.get("all_results"))
                 elif outcome["stage"] == "matching":
                     st.markdown("""
-                    <div style="background: #FFFBEB; border-left: 4px solid #D97706; padding: 12px 16px; border-radius: 4px; margin-top: 15px; font-size: 0.85rem; color: #92400E;">
+                    <div class="app-alert-box warning" style="margin-top: 15px;">
                         ⚠️ <strong>First time here?</strong> We couldn't find a matching biometric profile. If you have not registered your face yet, switch to the <strong>Guided Enrollment</strong> panel to create your account.
                     </div>
                     """, unsafe_allow_html=True)
@@ -1467,7 +1633,7 @@ with col_actions:
         # Beautiful informative auto-capture verification card element
         if "verify_outcome" not in st.session_state:
             st.markdown("""
-            <div style="background: #EFF6FF; border-left: 4px solid #3B82F6; padding: 12px 16px; border-radius: 8px; font-size: 0.85rem; color: #1E40AF; margin-bottom:1.5rem; font-weight: 500; line-height: 1.4;">
+            <div class="app-alert-box info">
                 ℹ️ Look at the camera. The system will scan and verify your identity automatically once aligned.
             </div>
             """, unsafe_allow_html=True)
@@ -1521,7 +1687,7 @@ with col_actions:
         if step == 1:
             st.info("Align your face inside the outline to capture automatically.")
         else:
-            st.markdown("<div style='background: #ECFDF5; border-left:4px solid #10B981; padding: 12px 16px; border-radius: 4px; margin-bottom:15px; font-size:0.85rem; color:#065F46;'>✓ Photo captured successfully. Click register below to complete.</div>", unsafe_allow_html=True)
+            st.markdown('<div class="app-alert-box success">✓ Photo captured successfully. Click register below to complete.</div>', unsafe_allow_html=True)
             col_btns = st.columns(2)
             with col_btns[0]:
                 if st.button("Retake Photo", key="reset_enroll_btn"):

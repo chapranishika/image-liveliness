@@ -390,6 +390,46 @@ def get_css_styles(theme_mode="light"):
         color: {alert_success_text} !important;
     }}
 
+    /* Reusable classes for this app's own custom alert-style boxes (the
+    "Look at the camera", "Photo captured successfully", "First time
+    here?", and error-banner boxes) -- same alert_*_bg/text/border tokens
+    as the native st.info/error/warning/success overrides above, so a
+    custom box and Streamlit's own alert of the same kind are always the
+    identical shade rather than two close-but-different blues/ambers/
+    greens maintained by hand in two places. */
+    .app-alert-box {{
+        padding: 12px 16px !important;
+        border-radius: 8px !important;
+        border-left: 4px solid transparent !important;
+        font-size: 0.85rem !important;
+        font-weight: 500 !important;
+        line-height: 1.4 !important;
+        margin-bottom: 1rem !important;
+    }}
+    .app-alert-box.info {{
+        background: {alert_info_bg} !important;
+        border-left-color: {alert_info_border} !important;
+        color: {alert_info_text} !important;
+    }}
+    .app-alert-box.warning {{
+        background: {alert_warning_bg} !important;
+        border-left-color: {alert_warning_border} !important;
+        color: {alert_warning_text} !important;
+    }}
+    .app-alert-box.success {{
+        background: {alert_success_bg} !important;
+        border-left-color: {alert_success_border} !important;
+        color: {alert_success_text} !important;
+    }}
+    .app-alert-box.error {{
+        background: {alert_error_bg} !important;
+        border-left-color: {alert_error_border} !important;
+        color: {alert_error_text} !important;
+    }}
+    .app-alert-box * {{
+        color: inherit !important;
+    }}
+
     /* Animated arrows for turn prompts */
     .face-arrow {{
         position: absolute !important;

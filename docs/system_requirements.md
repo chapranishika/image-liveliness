@@ -188,13 +188,23 @@ has not actually been tested should be stated plainly.
   safety-margin estimate built from the real measured numbers, not a
   second measurement on lighter hardware — that is real follow-up work,
   not something this document can respond to.
-- **Not tested on someone else's laptop, browser, or webcam.** Every real
-  live test in this project's main report, across every phase, was run on
-  the same person's machine and camera. A different laptop's default
-  camera driver, browser (Chrome was used throughout; Edge, Firefox, and
-  Safari have not been separately tested), or OS-level camera permission
-  flow could behave differently and has not yet been checked.
-- **No macOS or Linux testing at all.** Every measurement and every live
-  test in this project so far was run on Windows. The application code
-  itself is not Windows-specific, but this has not been confirmed by
-  actually running it anywhere else.
+- **Partially closed: cross-browser.** The UI's colors/contrast/styling
+  (`tests/playwright/`) now run automatically on every push and PR across
+  Chromium, Firefox, and WebKit — a real, automated check, not a manual
+  one-off. What this does *not* cover: the actual live camera flow
+  (`getUserMedia`, camera permission prompts, the real-time capture
+  component) has only ever been driven manually, and only in Chrome on
+  Windows. A different browser's camera-permission UX or codec support
+  could still behave differently in ways the current test suite can't see.
+- **Partially closed: operating system.** CI (`.github/workflows/tests.yml`)
+  runs the full backend test suite on Ubuntu on every push and PR — genuine
+  proof the core application code (quality checks, face matching, liveness,
+  database) is not Windows-specific, not just an assumption. What this
+  does *not* cover: the live camera-based UI flow has still only ever been
+  run, by a human, on Windows — GitHub Actions runners have no camera
+  hardware, so that half of the app has no cross-OS coverage at all.
+- **Not tested on someone else's laptop or webcam at all.** Every real
+  live test of the actual camera flow, across every phase of this project,
+  was run on the same person's machine and camera. A different laptop's
+  camera driver or hardware could still behave differently, and this has
+  not been checked on any second physical machine.

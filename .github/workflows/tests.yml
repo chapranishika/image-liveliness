@@ -1,0 +1,115 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  backend-tests:
+    name: Backend tests (pytest)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      # MediaPipe (blaze_face_short_range.tflite, face_landmarker.task) and
+      # DeepFace (~/.deepface weights) both auto-download on first use --
+      # cached so repeated runs don't re-download several hundred MB every
+      # time. Keyed on requirements.txt since a dependency bump is the only
+      # thing likely to change what gets downloaded.
+      - name: Cache model weights
+        uses: actions/cache@v4
+        with:
+          path: |
+            *.tflite
+            *.task
+            ~/.deepface
+          key: model-weights-${{ hashFiles('requirements.txt') }}
+
+      - name: Run backend test suite
+        run: pytest tests/ --ignore=tests/playwright -v
+
+  ui-contrast-tests:
+    name: UI contrast/regression tests (Playwright)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      # Deliberately NOT requirements.txt: tests/playwright's fixture app
+      # only imports app.styles/app.branding_config (plain constants, no
+      # ML), so this job skips MediaPipe/DeepFace/TensorFlow entirely --
+      # keeps this job fast, and the two jobs failing independently makes
+      # it obvious whether a break is backend logic or frontend styling.
+      # opencv-python and cryptography are needed transitively: pytest
+      # auto-loads tests/conftest.py for anything under tests/ (including
+      # tests/playwright/), and that file imports cv2 and src.db at
+      # module level regardless of which specific tests are selected --
+      # confirmed by actually running this exact install list in an
+      # isolated venv, not assumed.
+      - name: Install lightweight UI-test dependencies
+        run: pip install streamlit pytest pytest-playwright pillow numpy opencv-python cryptography
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        id: playwright-cache
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-browsers-${{ runner.os }}-${{ hashFiles('.github/workflows/tests.yml') }}
+
+      - name: Install Playwright browsers
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: playwright install --with-deps chromium firefox webkit
+
+      - name: Install Playwright OS dependencies only (cache hit)
+        if: steps.playwright-cache.outputs.cache-hit == 'true'
+        run: playwright install-deps chromium firefox webkit
+
+      - name: Run UI contrast/regression tests (chromium, firefox, webkit)
+        run: pytest tests/playwright/ --browser chromium --browser firefox --browser webkit -v
+
+  enforce-ui-test-coverage:
+    name: UI changes must include Playwright test updates
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # Structural enforcement of CONTRIBUTING.md's "verify against the
+      # real rendered page" rule -- this project shipped several contrast
+      # bugs because a CSS fix looked correct on paper and was never
+      # actually checked. A PR touching styling files without touching
+      # tests/playwright/ is exactly the pattern that let that happen, so
+      # it fails the build instead of relying on someone remembering.
+      - name: Check that UI/styling changes are accompanied by Playwright test changes
+        run: |
+          git fetch origin "${{ github.base_ref }}" --depth=1
+          CHANGED=$(git diff --name-only "origin/${{ github.base_ref }}...HEAD")
+          echo "Changed files in this PR:"
+          echo "$CHANGED"
+
+          UI_CHANGED=$(echo "$CHANGED" | grep -E '^app/styles\.py$|^app/streamlit_app\.py$|^app/branding_config\.py$' || true)
+          TESTS_CHANGED=$(echo "$CHANGED" | grep -E '^tests/playwright/' || true)
+
+          if [ -n "$UI_CHANGED" ] && [ -z "$TESTS_CHANGED" ]; then
+            echo "::error::This PR changes UI/styling files but doesn't touch tests/playwright/:"
+            echo "::error::$UI_CHANGED"
+            echo "::error::See CONTRIBUTING.md -- verify the change against the real rendered page (tests/playwright/style_probe_app.py) and add/update a test, rather than trusting the change on reasoning alone."
+            exit 1
+          fi
+          echo "OK: no UI/styling files changed, or Playwright tests were updated alongside them."

@@ -50,6 +50,19 @@ HEAD_TURN_HOLD_FRAMES = 5      # frames the yaw must stay in the target zone to 
 # without losing hold progress.
 HEAD_TURN_FLICKER_TOLERANCE = 2
 
+# LOOP_SIGNATURE_* -- heuristic replay/loop detector for the live active-
+# challenge frame sequence (see check_frame_loop_signature() below).
+# Deliberately conservative: a near-EXACT match requirement and a multi-
+# match count, specifically to avoid false-flagging a genuine, briefly
+# very still live user. NOT calibrated against a real staged replay
+# attack in this pass (no physical screen/camera setup available here) --
+# same disclosed-limitation pattern already used elsewhere in this
+# project (e.g. TEXTURE_UNIFORMITY_MIN's calibration comment in
+# quality_checks.py) rather than an unstated assumption of effectiveness.
+LOOP_SIGNATURE_MIN_LAG_SECONDS = 1.2  # frames closer together in time than this are naturally near-identical even for a real, still person
+LOOP_SIGNATURE_DIFF_THRESHOLD = 1.5   # mean abs diff on a 0-255 grayscale 32x32 thumbnail -- tighter than typical sensor/compression noise between two genuinely separate real camera frames
+LOOP_SIGNATURE_MIN_MATCHES = 4        # this many near-duplicate matches in one attempt before flagging as a possible loop/replay
+
 # BLINK_TICK_CONSEC_FRAMES_MIN (tick path only): BLINK_CONSEC_FRAMES_MIN=2
 # was calibrated for the blocking version, which reads frames from
 # cv2.VideoCapture at ~20-30fps -- 2 consecutive frames there is
@@ -330,6 +343,54 @@ def evaluate_head_turn_tick(frame, history, direction="left"):
     if hold_streak >= HEAD_TURN_HOLD_FRAMES:
         return new_history, "pass"
     return new_history, "pending"
+
+
+def check_frame_loop_signature(frame, frame_buffer):
+    """
+    Heuristic replay/loop detector for the active-challenge frame
+    sequence. A looped video clip repeats its exact visual content
+    (including the exact motion trajectory) every time it cycles; a real,
+    live person's natural micro-movement, breathing, and blink timing
+    essentially never reproduces the same frame content again, even a few
+    seconds apart. Downsamples each frame small and compares the current
+    one against everything already buffered more than
+    LOOP_SIGNATURE_MIN_LAG_SECONDS old (wall-clock, not tick count -- stays
+    correct regardless of buffer trimming) -- short-lag closeness is expected
+    even from a genuinely still live person and is deliberately not
+    counted, only repeats further apart than that.
+
+    See the LOOP_SIGNATURE_* constants' comment for the calibration
+    caveat: this has not been tested against a real staged replay attack,
+    and is tuned conservatively (tight match threshold, multi-match
+    requirement) specifically to avoid false-flagging a genuine live user.
+
+    frame_buffer: list of (thumbnail: np.ndarray, timestamp: float) tuples
+    from earlier ticks in this same challenge attempt. Pass [] on the
+    first tick of a new attempt.
+
+    Returns (new_buffer, is_suspicious, match_count).
+    """
+    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY) if len(frame.shape) == 3 else frame
+    thumb = cv2.resize(gray, (32, 32)).astype(np.float32)
+
+    now = time.time()
+    match_count = 0
+    for past_thumb, past_ts in frame_buffer:
+        if now - past_ts < LOOP_SIGNATURE_MIN_LAG_SECONDS:
+            continue
+        diff = float(np.abs(thumb - past_thumb).mean())
+        if diff < LOOP_SIGNATURE_DIFF_THRESHOLD:
+            match_count += 1
+
+    new_buffer = frame_buffer + [(thumb, now)]
+    # Cap buffer size to bound memory/CPU cost across a long attempt --
+    # safe to trim freely now that matching is timestamp-based, not
+    # dependent on buffer length or position within it.
+    if len(new_buffer) > 200:
+        new_buffer = new_buffer[-200:]
+
+    is_suspicious = match_count >= LOOP_SIGNATURE_MIN_MATCHES
+    return new_buffer, is_suspicious, match_count
 
 
 def run_random_active_challenge(camera_index=0, preferred_challenge=None):

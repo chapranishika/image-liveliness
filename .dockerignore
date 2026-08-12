@@ -1,0 +1,13 @@
+venv/
+scratch/
+__pycache__/
+*.pyc
+.git/
+.pytest_cache/
+node_modules/
+data/face_verification.db
+data/*.db
+*.tflite
+*.task
+.env
+tests/playwright/baselines/

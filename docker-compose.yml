@@ -1,0 +1,49 @@
+# docker-compose.yml
+#
+# Two independent services from the same image (see Dockerfile), mirroring
+# run_app.py's local two-process architecture:
+#   - backend:  the FastAPI API layer, for a client's own external
+#                integrations (not used by the frontend below -- it calls
+#                src/ directly, in-process)
+#   - frontend: the Streamlit consumer UI end users actually interact with
+#
+# Both need FACE_DB_ENCRYPTION_KEY and FACE_API_KEY set (see .env.example)
+# and share the same data volume so they see the same SQLite database.
+#
+# Usage:
+#   docker compose up --build
+#   -> backend:  http://localhost:8000
+#   -> frontend: http://localhost:8501
+#
+# IMPORTANT: browsers only grant camera access (getUserMedia) on a secure
+# context -- localhost is exempt, but any other host needs HTTPS in front
+# of this (a reverse proxy terminating TLS, or your hosting platform's
+# built-in HTTPS). See docs/deployment.md.
+
+services:
+  backend:
+    build: .
+    command: uvicorn api.api:app --host 0.0.0.0 --port 8000
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      - PYTHONPATH=/app
+    volumes:
+      - face_data:/app/data
+
+  frontend:
+    build: .
+    command: streamlit run app/streamlit_app.py --server.port 8501 --server.address 0.0.0.0
+    ports:
+      - "8501:8501"
+    env_file:
+      - .env
+    environment:
+      - PYTHONPATH=/app
+    volumes:
+      - face_data:/app/data
+
+volumes:
+  face_data:
