@@ -113,3 +113,35 @@ jobs:
             exit 1
           fi
           echo "OK: no UI/styling files changed, or Playwright tests were updated alongside them."
+
+  publish-image:
+    name: Publish Docker image to GHCR
+    runs-on: ubuntu-latest
+    needs: [backend-tests, ui-contrast-tests]
+    # Only publish a verified build of main, never an untested PR branch --
+    # both test jobs above must succeed first. Doesn't deploy this anywhere
+    # live (see docs/deployment.md's disclosed gap on that); this just makes
+    # "pull and run the latest built image" fully automated instead of a
+    # manual `docker build` on someone's own machine.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository }}:latest
+            ghcr.io/${{ github.repository }}:${{ github.sha }}

@@ -105,11 +105,30 @@ measured **6.7 GB disk usage / 1.6 GB content size** — a 49%/61% reduction,
 confirmed by actually building both versions and comparing real
 `docker images` output, not estimated.
 
+## Automated image publishing
+
+Every push to `main` that passes both CI test jobs automatically builds
+this same `Dockerfile` and pushes it to GitHub Container Registry
+(`.github/workflows/tests.yml`'s `publish-image` job) — no manual
+`docker build` needed to get the latest verified image:
+
+```bash
+docker pull ghcr.io/chapranishika/image-liveliness:latest
+```
+
+This publishes the image; it does not deploy it anywhere. Pulling the
+image onto Railway/Render/Fly.io/a VM and actually running it there is
+still a manual step — see Path 1 above for what that host needs (HTTPS,
+RAM budget).
+
 ## Not yet done, disclosed honestly
 
 - Neither deployment path above has actually been run against Community
   Cloud's or a container host's real memory limit — the RAM caveats above
   are reasoned from real local measurements, not confirmed against an
   actual constrained deployment.
-- No automated deployment pipeline (CI builds and tests the code; nothing
-  currently pushes a built image anywhere automatically).
+- The image is now published automatically (see above), but nothing pulls
+  it onto a live host automatically — actual deployment to a running
+  service is still a manual step, since it needs an account and
+  credentials on whichever host is chosen, which isn't something to set
+  up unilaterally.
