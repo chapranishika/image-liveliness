@@ -11,12 +11,8 @@ per user, per the Approach & Design Document (Part 0.1): checking all
 three would triple the comparison cost for no real accuracy benefit, since
 the front template alone is distinctive enough to catch a duplicate.
 """
-import sys
-import os
-
-sys.path.insert(0, os.path.dirname(__file__))
-from face_matching import cosine_similarity
-from db import get_all_front_templates
+from src.face_matching import cosine_similarity
+from src.db import get_all_front_templates
 
 # Deployed duplicate threshold. Set to 0.68, which sits optimally in the wide gap between
 # genuine frontal-vs-frontal matches (approx 0.9676) and impostor frontal-vs-frontal matches

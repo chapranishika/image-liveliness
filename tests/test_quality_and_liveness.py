@@ -7,6 +7,7 @@ boundary thresholds, and passive liveness checks.
 import pytest
 from src.quality_score import compute_quality_score
 from src.liveness_passive import check_passive_liveness
+from src.quality_checks import check_screen_surface_texture, TEXTURE_UNIFORMITY_MIN
 
 def test_genuine_frontal_quality_passes_balanced(genuine_front_image):
     """Asserts that a high-quality genuine frontal capture passes the Balanced threshold."""
@@ -42,8 +43,36 @@ def test_flat_gray_image_fails_quality_preset(synthetic_flat_gray_image):
 def test_passive_liveness_structure_on_genuine(genuine_front_image):
     """Asserts that passive liveness check returns the correct schema format."""
     result = check_passive_liveness(genuine_front_image)
-    
+
     assert "status" in result
     assert "antispoof_score" in result
     assert "is_real" in result
     assert result["status"] in ["pass", "fail", "error"]
+
+
+def test_screen_surface_texture_passes_on_genuine_natural_texture(genuine_front_image):
+    """
+    A real photo's natural, uneven micro-texture should clear
+    TEXTURE_UNIFORMITY_MIN -- calibrated in the function's own code comment
+    against real genuine captures measuring 1.099-1.183, well above 0.90.
+    Was previously untested despite being wired into the live decision
+    path (verify_pose_and_quality() in app/streamlit_app.py).
+    """
+    result = check_screen_surface_texture(genuine_front_image)
+    assert result["status"] == "pass"
+    assert result["value"] >= TEXTURE_UNIFORMITY_MIN
+
+
+def test_screen_surface_texture_fails_on_a_perfectly_uniform_synthetic_image(synthetic_flat_gray_image):
+    """
+    A flat, textureless image has zero local-sharpness variation across
+    every patch -- the same property a display's uniform pixel grid
+    produces on a real screen-replay attack (Section 5.1.4's real
+    calibration: screen-replay-derived samples measured 0.567-0.846,
+    all below 0.90). This synthetic case sits at the extreme end of that
+    same failure mode, not a different one.
+    """
+    result = check_screen_surface_texture(synthetic_flat_gray_image)
+    assert result["status"] == "fail"
+    assert result["value"] < TEXTURE_UNIFORMITY_MIN
+    assert "screen replay" in result["reason"]

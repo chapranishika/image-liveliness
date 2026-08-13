@@ -18,5 +18,6 @@ python-multipart
 scipy
 cryptography
 pytest
+pytest-cov
 playwright
 pytest-playwright
