@@ -43,6 +43,12 @@ st.markdown('<div class="app-alert-box success">Custom success alert box</div>',
 
 st.radio("nav", ["Verify Identity", "Guided Enrollment"], label_visibility="collapsed", key="nav_probe")
 
+st.markdown(
+    '<span class="status-badge success">Success badge</span> '
+    '<span class="status-badge danger">Danger badge</span>',
+    unsafe_allow_html=True,
+)
+
 st.checkbox("I agree to the consent checkbox", value=True, key="consent_probe")
 
 st.button("Register Face ID", key="button_probe")

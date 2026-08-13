@@ -103,6 +103,50 @@ def test_selectbox_border_uses_app_palette_not_red_focus_ring_dark(probe_page):
     assert border != STREAMLIT_DEFAULT_RED_RGB
 
 
+def _relative_luminance(hex_color):
+    hex_color = hex_color.lstrip("#")
+    r, g, b = (int(hex_color[i:i + 2], 16) / 255.0 for i in (0, 2, 4))
+
+    def linearize(c):
+        return c / 12.92 if c <= 0.03928 else ((c + 0.055) / 1.055) ** 2.4
+
+    r, g, b = linearize(r), linearize(g), linearize(b)
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b
+
+
+def _contrast_ratio(hex_a, hex_b):
+    l1, l2 = _relative_luminance(hex_a), _relative_luminance(hex_b)
+    lighter, darker = max(l1, l2), min(l1, l2)
+    return (lighter + 0.05) / (darker + 0.05)
+
+
+def _rgb_str_to_hex(rgb_str):
+    nums = [int(n) for n in rgb_str.strip("rgb()").split(",")]
+    return "#{:02X}{:02X}{:02X}".format(*nums)
+
+
+@pytest.mark.parametrize("selector", [".app-alert-box.error", ".app-alert-box.success"])
+def test_alert_text_clears_wcag_aa_contrast_dark(probe_page, selector):
+    """
+    Same real-math WCAG check as the light-mode suite. Dark mode's
+    alert-text colors already measured 7.5:1-9.6:1 in a direct audit
+    (scratch/check_wcag_contrast.py) -- this locks that real margin in as
+    regression protection rather than leaving it unverified, the same gap
+    that let light mode's colors drift below 4.5:1 unnoticed.
+    """
+    colors = probe_page.eval_on_selector(
+        selector,
+        "el => { const cs = getComputedStyle(el); return [cs.color, cs.backgroundColor]; }",
+    )
+    fg_hex = _rgb_str_to_hex(colors[0])
+    bg_hex = _rgb_str_to_hex(colors[1])
+    ratio = _contrast_ratio(fg_hex, bg_hex)
+    assert ratio >= 4.5, (
+        f"{selector} (dark): text {fg_hex} on background {bg_hex} measures {ratio:.2f}:1, "
+        f"below WCAG AA's 4.5:1 minimum for normal text"
+    )
+
+
 def test_no_streamlit_default_red_anywhere_on_page_dark(probe_page):
     matches = probe_page.evaluate(
         """() => {

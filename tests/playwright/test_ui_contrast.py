@@ -179,6 +179,56 @@ def test_no_streamlit_default_red_anywhere_on_page(probe_page):
     assert matches == [], f"Streamlit's default red accent leaked through on: {matches}"
 
 
+def _relative_luminance(hex_color):
+    hex_color = hex_color.lstrip("#")
+    r, g, b = (int(hex_color[i:i + 2], 16) / 255.0 for i in (0, 2, 4))
+
+    def linearize(c):
+        return c / 12.92 if c <= 0.03928 else ((c + 0.055) / 1.055) ** 2.4
+
+    r, g, b = linearize(r), linearize(g), linearize(b)
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b
+
+
+def _contrast_ratio(hex_a, hex_b):
+    l1, l2 = _relative_luminance(hex_a), _relative_luminance(hex_b)
+    lighter, darker = max(l1, l2), min(l1, l2)
+    return (lighter + 0.05) / (darker + 0.05)
+
+
+def _rgb_str_to_hex(rgb_str):
+    # "rgb(185, 28, 28)" -> "#B91C1C"
+    nums = [int(n) for n in rgb_str.strip("rgb()").split(",")]
+    return "#{:02X}{:02X}{:02X}".format(*nums)
+
+
+# WCAG 2.1 AA: 4.5:1 for normal text. Real math against the actually
+# rendered computed colors, not a hardcoded-value regression check like
+# the tests above -- this catches ANY future color change that drops
+# contrast below the real threshold, not just a reversion to one specific
+# old broken value. Added after an audit (scratch/check_wcag_contrast.py)
+# found the alert error/success text colors genuinely failed this (4.41:1
+# and 3.58:1 against their backgrounds) despite passing every existing
+# exact-value regression test, since none of those checked a real ratio.
+WCAG_AA_NORMAL_TEXT_MIN = 4.5
+
+
+@pytest.mark.parametrize("selector", [".app-alert-box.error", ".app-alert-box.success",
+                                       ".status-badge.success", ".status-badge.danger"])
+def test_alert_and_badge_text_clears_wcag_aa_contrast(probe_page, selector):
+    colors = probe_page.eval_on_selector(
+        selector,
+        "el => { const cs = getComputedStyle(el); return [cs.color, cs.backgroundColor]; }",
+    )
+    fg_hex = _rgb_str_to_hex(colors[0])
+    bg_hex = _rgb_str_to_hex(colors[1])
+    ratio = _contrast_ratio(fg_hex, bg_hex)
+    assert ratio >= WCAG_AA_NORMAL_TEXT_MIN, (
+        f"{selector}: text {fg_hex} on background {bg_hex} measures {ratio:.2f}:1, "
+        f"below WCAG AA's {WCAG_AA_NORMAL_TEXT_MIN}:1 minimum for normal text"
+    )
+
+
 def test_full_page_screenshot_matches_baseline(probe_page, browser_name):
     if browser_name != "chromium":
         pytest.skip("Pixel-exact screenshot regression runs on chromium only -- cross-browser font "

@@ -37,9 +37,18 @@ def get_css_styles(theme_mode="light"):
         alert_success_bg, alert_success_text, alert_success_border = "#052E1A", "#6EE7A0", "#059669"
     else:
         alert_info_bg, alert_info_text, alert_info_border = "#EFF6FF", "#1D4ED8", "#BFDBFE"
-        alert_error_bg, alert_error_text, alert_error_border = "#FEF2F2", "#DC2626", "#FCA5A5"
+        # alert_error_text and alert_success_text darkened one shade from
+        # the original #DC2626/#059669 (still used unchanged elsewhere as
+        # border/dot colors, where the 3:1 non-text threshold applies, not
+        # 4.5:1) -- measured via scratch/check_wcag_contrast.py: the
+        # original text colors scored 4.41:1 and 3.58:1 against their
+        # light-mode alert backgrounds, both below WCAG AA's 4.5:1
+        # normal-text minimum. The new shades measure 5.91:1/5.21:1, same
+        # hue family, same visual "red"/"green" meaning, real margin above
+        # the threshold.
+        alert_error_bg, alert_error_text, alert_error_border = "#FEF2F2", "#B91C1C", "#FCA5A5"
         alert_warning_bg, alert_warning_text, alert_warning_border = "#FFFBEB", "#B45309", "#FDE68A"
-        alert_success_bg, alert_success_text, alert_success_border = "#ECFDF5", "#059669", "#A7F3D0"
+        alert_success_bg, alert_success_text, alert_success_border = "#ECFDF5", "#047857", "#A7F3D0"
 
     return f"""
 <style>
@@ -99,19 +108,19 @@ def get_css_styles(theme_mode="light"):
     
     .status-badge.success {{
         background: #ECFDF5 !important;
-        color: #059669 !important;
+        color: #047857 !important;
         border-color: #A7F3D0 !important;
     }}
-    
+
     .status-badge.warning {{
         background: #FFFBEB !important;
         color: #D97706 !important;
         border-color: #FDE68A !important;
     }}
-    
+
     .status-badge.danger {{
         background: #FEF2F2 !important;
-        color: #DC2626 !important;
+        color: #B91C1C !important;
         border-color: #FCA5A5 !important;
     }}
     
