@@ -114,12 +114,79 @@ jobs:
           fi
           echo "OK: no UI/styling files changed, or Playwright tests were updated alongside them."
 
+  docker-smoke-test:
+    name: Docker build + runtime smoke test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # docs/deployment.md's "Verified" section previously only claimed
+      # `docker build` finishes cleanly -- it never actually started the
+      # built image and confirmed it serves real traffic. This closes that
+      # gap: build once, run both real services from docker-compose.yml,
+      # and hit each one's real health endpoint, not just check the
+      # container didn't immediately exit.
+      - name: Generate a throwaway .env for this run
+        run: |
+          pip install --quiet cryptography
+          KEY=$(python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())")
+          echo "FACE_DB_ENCRYPTION_KEY=$KEY" > .env
+          echo "FACE_API_KEY=smoke-test-key-not-real" >> .env
+
+      - name: Build and start both services
+        run: docker compose up --build -d
+
+      - name: Wait for the backend's real /health endpoint
+        run: |
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:8000/health -o /tmp/health.json; then
+              echo "Backend responded after ${i}0s max wait:"
+              cat /tmp/health.json
+              STATUS=$(python3 -c "import json; print(json.load(open('/tmp/health.json'))['status'])")
+              if [ "$STATUS" = "healthy" ]; then
+                echo "OK: backend reports healthy"
+                exit 0
+              else
+                echo "::error::Backend responded but reported status='$STATUS', not 'healthy':"
+                cat /tmp/health.json
+                exit 1
+              fi
+            fi
+            sleep 10
+          done
+          echo "::error::Backend never responded on :8000/health within 300s"
+          docker compose logs backend
+          exit 1
+
+      - name: Wait for the frontend's Streamlit health endpoint
+        run: |
+          # Model warmup is a real, previously-measured ~28s cost
+          # (docs/deployment.md) -- generous retry budget to cover that
+          # plus container startup on a CI runner, which can be slower
+          # than a local dev machine.
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:8501/_stcore/health; then
+              echo "OK: frontend responded on :8501/_stcore/health"
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "::error::Frontend never responded on :8501/_stcore/health within 300s"
+          docker compose logs frontend
+          exit 1
+
+      - name: Tear down
+        if: always()
+        run: docker compose down -v
+
   publish-image:
     name: Publish Docker image to GHCR
     runs-on: ubuntu-latest
-    needs: [backend-tests, ui-contrast-tests]
+    needs: [backend-tests, ui-contrast-tests, docker-smoke-test]
     # Only publish a verified build of main, never an untested PR branch --
-    # both test jobs above must succeed first. Doesn't deploy this anywhere
+    # every job above must succeed first, including the runtime smoke test
+    # (a build that succeeds but never actually boots must not get
+    # published as "latest"). Doesn't deploy this anywhere
     # live (see docs/deployment.md's disclosed gap on that); this just makes
     # "pull and run the latest built image" fully automated instead of a
     # manual `docker build` on someone's own machine.
