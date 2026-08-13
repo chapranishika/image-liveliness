@@ -1,5 +1,17 @@
 # Final Confirmation Report — End of the 5-Phase Stability/Security Pass
 
+> **Update (2026-08-13):** this document is the confirmation pass for the
+> 5-phase Stability/Security work that ended 2026-08-08. Real, substantial
+> work happened after this date -- a security-hardening round (structural
+> active-liveness gate, the loop-signature replay detector, a critical live
+> regression found and fixed, real-image replay-signal calibration), a
+> Docker/admin-console/CI production-readiness pass, and an rPPG bandpass
+> fix, matching-threshold optimization, and testing-rigor pass (26->43
+> tests, 50%->62% coverage) -- none of which is reflected below. See
+> `docs/Final_Report_Full.docx`, Phase 11 and Phase 12, for that work. Left
+> below unchanged rather than rewritten, per this project's own discipline
+> of keeping superseded numbers auditable instead of silently replacing them.
+
 **Date:** 2026-08-08
 **Structure:** one update per item in `docs/phase0_baseline.md`'s 8-item list, in the same order, so this diffs cleanly against that baseline. Each item gets a final status — **closed**, **substantially mitigated**, **disclosed-open-by-design**, or **still-open** — with the real number or evidence backing it, not prose confidence.
 
