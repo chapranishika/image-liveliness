@@ -504,8 +504,14 @@ def _clear_action_error():
 def _render_action_error_banner():
     err = st.session_state.get("action_error")
     if err:
+        # role="alert" -- a screen reader user gets no visual color/badge
+        # cue that something went wrong; without this, an action error has
+        # no programmatic signal at all and would go completely unnoticed
+        # by anyone not looking at the screen. Shared by both Verify
+        # Identity and Guided Enrollment (both call this same function),
+        # so one fix covers the error path in both flows.
         st.markdown(
-            f'<div class="app-alert-box error">✗ {err}</div>',
+            f'<div class="app-alert-box error" role="alert">✗ {err}</div>',
             unsafe_allow_html=True,
         )
 
@@ -1601,8 +1607,13 @@ with col_actions:
                 st.markdown("<div style='font-size:0.8rem; color:#64748B; margin-top:4px;'>Captured photo</div>", unsafe_allow_html=True)
                 
             if outcome["status"] == "pass":
+                # role="status" aria-live="polite" -- this is the actual
+                # end result of the entire flow, communicated here purely
+                # visually (a green checkmark card) otherwise. A screen
+                # reader user would have no way to know verification
+                # succeeded without this.
                 st.markdown(f"""
-                <div class="success-screen-card">
+                <div class="success-screen-card" role="status" aria-live="polite">
                     <div class="success-checkmark-circle">
                         <svg class="checkmark-svg" viewBox="0 0 52 52">
                             <circle class="checkmark-circle-path" cx="26" cy="26" r="25" fill="none"/>
@@ -1621,12 +1632,19 @@ with col_actions:
                     st.session_state.pop("verify_image", None)
                     st.rerun()
             else:
+                # role="alert" aria-live="assertive" -- the failure
+                # counterpart to the success card above; assertive (not
+                # polite) since a failed verification is worth interrupting
+                # whatever else a screen reader is announcing, the same way
+                # a sighted user's eye is drawn to it immediately.
                 st.markdown(f"""
+                <div role="alert" aria-live="assertive">
                 <div style="margin-top:15px; margin-bottom: 10px;">
                     <span class="status-badge danger">✗ Verification Failed</span>
                 </div>
                 <div style="font-size:0.95rem; font-weight:500; color:#DC2626;">
                     {outcome['reason']}
+                </div>
                 </div>
                 """, unsafe_allow_html=True)
                 
@@ -1707,7 +1725,11 @@ with col_actions:
         if step == 1:
             st.info("Align your face inside the outline to capture automatically.")
         else:
-            st.markdown('<div class="app-alert-box success">✓ Photo captured successfully. Click register below to complete.</div>', unsafe_allow_html=True)
+            # role="status" aria-live="polite" -- a real state transition
+            # (step 1 -> step 2) communicated only visually otherwise; a
+            # screen reader user needs to know the photo was captured
+            # before the next step (clicking Register) makes sense.
+            st.markdown('<div class="app-alert-box success" role="status" aria-live="polite">✓ Photo captured successfully. Click register below to complete.</div>', unsafe_allow_html=True)
             col_btns = st.columns(2)
             with col_btns[0]:
                 if st.button("Retake Photo", key="reset_enroll_btn"):

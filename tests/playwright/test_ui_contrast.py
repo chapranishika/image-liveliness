@@ -229,6 +229,52 @@ def test_alert_and_badge_text_clears_wcag_aa_contrast(probe_page, selector):
     )
 
 
+def test_error_banner_has_alert_role(probe_page):
+    """
+    A screen reader user gets no visual color/badge cue that something
+    went wrong -- role="alert" is the only signal that would reach them.
+    Regression guard for _render_action_error_banner(), shared by both
+    Verify Identity and Guided Enrollment.
+    """
+    role = probe_page.eval_on_selector(".app-alert-box.error", "el => el.getAttribute('role')")
+    assert role == "alert"
+
+
+def test_success_alert_box_has_status_live_region(probe_page):
+    el_role = probe_page.eval_on_selector(".app-alert-box.success", "el => el.getAttribute('role')")
+    el_live = probe_page.eval_on_selector(".app-alert-box.success", "el => el.getAttribute('aria-live')")
+    assert el_role == "status"
+    assert el_live == "polite"
+
+
+def test_verify_success_card_has_status_live_region(probe_page):
+    """The end result of the entire Verify Identity flow -- a screen reader user needs role=status/aria-live to know it happened at all."""
+    role = probe_page.eval_on_selector(".success-screen-card", "el => el.getAttribute('role')")
+    live = probe_page.eval_on_selector(".success-screen-card", "el => el.getAttribute('aria-live')")
+    assert role == "status"
+    assert live == "polite"
+
+
+def test_verify_failure_card_has_assertive_alert_region(probe_page):
+    """
+    assertive (not polite) since a failed verification is worth
+    interrupting whatever else is being announced, the same way a sighted
+    user's eye is drawn to it immediately. Scoped to the danger badge
+    INSIDE the alert region specifically -- the probe app also has a
+    standalone status-badge.danger example elsewhere on the page that
+    isn't wrapped in an alert region, so a plain first-match selector
+    would be ambiguous.
+    """
+    role = probe_page.eval_on_selector(
+        '[role="alert"] .status-badge.danger', "el => el.closest('[role=\"alert\"]').getAttribute('role')"
+    )
+    live = probe_page.eval_on_selector(
+        '[role="alert"] .status-badge.danger', "el => el.closest('[role=\"alert\"]').getAttribute('aria-live')"
+    )
+    assert role == "alert"
+    assert live == "assertive"
+
+
 def test_full_page_screenshot_matches_baseline(probe_page, browser_name):
     if browser_name != "chromium":
         pytest.skip("Pixel-exact screenshot regression runs on chromium only -- cross-browser font "

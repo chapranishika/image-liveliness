@@ -37,9 +37,38 @@ st.success("Success alert message")
 # and "Photo captured successfully" boxes. Covered separately since a fix
 # to one path doesn't guarantee the other stayed correct.
 st.markdown('<div class="app-alert-box info">Custom info alert box</div>', unsafe_allow_html=True)
-st.markdown('<div class="app-alert-box error">Custom error alert box</div>', unsafe_allow_html=True)
+# role="alert" -- matches _render_action_error_banner()'s real markup
+# (app/streamlit_app.py) exactly, so a regression there is caught here.
+st.markdown('<div class="app-alert-box error" role="alert">Custom error alert box</div>', unsafe_allow_html=True)
 st.markdown('<div class="app-alert-box warning">Custom warning alert box</div>', unsafe_allow_html=True)
-st.markdown('<div class="app-alert-box success">Custom success alert box</div>', unsafe_allow_html=True)
+# role="status" aria-live="polite" -- matches the real "Photo captured
+# successfully" markup in app/streamlit_app.py's Guided Enrollment step 2.
+st.markdown('<div class="app-alert-box success" role="status" aria-live="polite">Custom success alert box</div>', unsafe_allow_html=True)
+
+# The two real terminal-outcome cards from Verify Identity
+# (app/streamlit_app.py) -- rendered here with the exact same markup/ARIA
+# so a regression in either is caught without needing to drive the full
+# live verification flow through Playwright.
+st.markdown(
+    """
+    <div class="success-screen-card" role="status" aria-live="polite">
+        <div class="success-screen-title">You're Verified!</div>
+        <div class="success-screen-sub">Welcome back, Probe User</div>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
+st.markdown(
+    """
+    <div role="alert" aria-live="assertive">
+    <div style="margin-top:15px; margin-bottom: 10px;">
+        <span class="status-badge danger">Verification Failed</span>
+    </div>
+    <div>Probe failure reason</div>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
 
 st.radio("nav", ["Verify Identity", "Guided Enrollment"], label_visibility="collapsed", key="nav_probe")
 
