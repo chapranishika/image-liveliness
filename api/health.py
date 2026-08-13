@@ -18,9 +18,19 @@ import os
 import time
 import sqlite3
 
+import src.db as db_module
+
 
 def check_database():
-    db_path = os.path.join("data", "face_verification.db")
+    # Uses src.db's own DB_PATH (which respects the FACE_DB_PATH env var
+    # override) rather than a separately hardcoded path -- previously
+    # hardcoded "data/face_verification.db" independently of src.db,
+    # meaning a deployment that relocated the database via FACE_DB_PATH
+    # would have this check silently looking at the wrong file. Reads
+    # db_module.DB_PATH (a live attribute lookup) rather than `from
+    # src.db import DB_PATH` (which would freeze the value at this
+    # module's own import time and never see a later FACE_DB_PATH change).
+    db_path = db_module.DB_PATH
     if not os.path.exists(db_path):
         return {"status": "fail", "detail": "database file does not exist"}
     try:

@@ -100,10 +100,33 @@ def test_soft_deleted_user_excluded_from_duplicate_check_pool(temp_db):
 def test_hard_delete_purges_record_irreversibly(temp_db):
     """Asserts that hard deletion completely expunges the user from the database."""
     user_id = temp_db.insert_user("David", consent_given=True)
-    
+
     # Hard delete
     temp_db.delete_user(user_id, hard_delete=True)
-    
+
     # User must not exist
+    user = query_user_from_db(temp_db, user_id)
+    assert user is None
+
+def test_hard_delete_succeeds_after_a_verification_was_logged(temp_db):
+    """
+    verification_logs has a real FOREIGN KEY on user_id (unlike access_log,
+    which deliberately stays unconstrained so the audit trail survives a
+    deletion) -- found via a real end-to-end register->verify->hard-delete
+    test that hard_delete previously failed outright (sqlite3.IntegrityError)
+    for any user who had ever completed a single verification, since the
+    test above never logged one first and so never exercised this path.
+    """
+    user_id = temp_db.insert_user("Eve", consent_given=True)
+    temp_db.log_verification(
+        user_id=user_id,
+        quality_result={"status": "pass"},
+        liveness_result={"status": "pass"},
+        match_score=0.9,
+        decision="accept",
+    )
+
+    temp_db.delete_user(user_id, hard_delete=True)
+
     user = query_user_from_db(temp_db, user_id)
     assert user is None

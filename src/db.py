@@ -177,6 +177,16 @@ def delete_user(user_id, hard_delete=False, actor="system"):
 
     if hard_delete:
         cur.execute("DELETE FROM templates WHERE user_id = ?", (user_id,))
+        # verification_logs has a real FOREIGN KEY on user_id (unlike
+        # access_log, which deliberately keeps target_user_id unconstrained
+        # so the audit trail survives a deleted user) -- deleting the user
+        # row without clearing this first violates that constraint. Found
+        # via a real end-to-end register -> verify -> hard-delete test
+        # (tests/test_api_endpoints.py): any user who had ever completed a
+        # single verification attempt made hard_delete fail outright, a gap
+        # the previous test only missed because it never inserted a
+        # verification log before calling delete_user().
+        cur.execute("DELETE FROM verification_logs WHERE user_id = ?", (user_id,))
         cur.execute("DELETE FROM users WHERE user_id = ?", (user_id,))
         action = "hard_delete"
     else:

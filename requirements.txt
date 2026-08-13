@@ -6,6 +6,7 @@ tf-keras
 torch
 fastapi
 uvicorn[standard]
+httpx
 streamlit
 streamlit-webrtc
 scikit-learn
