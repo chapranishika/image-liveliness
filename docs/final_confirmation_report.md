@@ -115,6 +115,8 @@ Confirmed present and passing in this run's full pytest suite (14/14).
 
 **Status unchanged by design**: full rebalancing/retraining remains explicitly out of scope per the original 2026-08-04 decision. This phase adds *why*, not a fix.
 
+> **CORRECTION (2026-08-13):** every number in this section, and the "root cause" breakdown below it, was computed against demographic labels that were never real -- `day36_38_bias_testing.py` auto-generates them from array-index arithmetic as a placeholder when no annotation file exists, and the file was never actually hand-corrected (confirmed via git history: written once, never touched again). Re-annotated all 40 identities for real and fixed a second bug in the same script (liveness pass/fail was computed via `antispoof_score >= 0.90`, not the real `is_real` decision, the same class of error Section 1 above already found and fixed for the screen-replay evaluation). The real, corrected numbers are a genuinely different picture, not a smaller version of this one -- notably, the gender gap **reverses direction** (Male, not Female, is the lower-scoring group on both quality and liveness) and the skin-tone finding shifts (Medium, not Dark, has the lowest liveness pass rate). Full corrected table and analysis in `data/Evaluation_Report.md`, Section 6 item 3's correction. The brightness/camera-under-exposure root cause for the skin-tone quality gap is the one piece of the original analysis that held up under real labels.
+
 ---
 
 ## 6. WebRTC hiccup — Closed (app-side bug) / Still-open (mitigation effectiveness)

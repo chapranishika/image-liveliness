@@ -132,15 +132,25 @@ def run_bias_evaluation(identities_dict, sampled_ids, demo_mapping):
             q_pass = 1 if q_res["decision"] == "accept" else 0
             sub_scores = q_res.get("sub_scores", {})
 
-            # 2. Evaluate Passive Liveness (Score >= 0.90)
+            # 2. Evaluate Passive Liveness -- via the real live decision
+            # (check_passive_liveness()'s status/is_real, derived from
+            # DeepFace's is_real flag), NOT antispoof_score >= 0.90.
+            # data/Evaluation_Report.md Section 5.1.3 already found and
+            # corrected this exact same score-threshold-vs-real-decision
+            # discrepancy for the screen-replay evaluation; this script had
+            # the identical bug, never carried the same fix over. Kept
+            # score/DEPLOYED_LIVENESS_THRESHOLD computed alongside for
+            # transparency (visible in the warning below) but no longer
+            # used to decide pass/fail.
             l_res = check_passive_liveness(img)
-            score = l_res.get("antispoof_score", 0.0)
-            l_pass = 1 if score >= DEPLOYED_LIVENESS_THRESHOLD else 0
+            score = l_res.get("antispoof_score", 0.0) or 0.0
+            l_pass = 1 if l_res.get("status") == "pass" else 0
 
             if l_pass == 0:
                 warnings.append(
                     f"False Liveness Rejection: Identity {ident_id} ({demo['skin_tone']}, {demo['gender']}), "
-                    f"Image {os.path.basename(path)} flagged as spoof (score={score:.4f})"
+                    f"Image {os.path.basename(path)} flagged as spoof (real decision is_real={l_res.get('is_real')}, "
+                    f"score={score:.4f} for reference only)"
                 )
 
             overall_total += 1
