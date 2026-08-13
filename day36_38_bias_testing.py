@@ -28,7 +28,7 @@ from src.liveness_passive import check_passive_liveness
 
 DEMOGRAPHICS_CSV = os.path.join("data", "cfp_demographics.csv")
 RANDOM_SEED = 7
-SAMPLE_SIZE = 40
+SAMPLE_SIZE = 100
 DEPLOYED_LIVENESS_THRESHOLD = 0.90
 
 def select_stratified_sample(identities_dict):
