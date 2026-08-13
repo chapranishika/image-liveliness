@@ -26,6 +26,36 @@ BRIGHTNESS_MIN = 100      # below this = too dark (calibrated Day 7)
 BRIGHTNESS_MAX = 220      # above this = overexposed (calibrated Day 7)
 BLUR_MIN = 1000           # below this = too blurry (calibrated Day 7)
 
+# BRIGHTNESS_MIN_P90 -- the "too dark" side of the brightness check, based
+# on the 90th-percentile pixel intensity (highlights: cheekbones, forehead,
+# nose bridge) rather than the whole-image mean BRIGHTNESS_MIN above.
+# Real bias-testing data (Evaluation_Report.md Section 6 item 3's
+# correction) found the mean-based measurement genuinely disadvantages
+# darker skin under identical lighting -- real Dark-skin mean grayscale
+# intensity measured 91.0 vs. Light/Medium's 122-123, because base skin
+# reflectance, not scene lighting, dominates a whole-image mean. A face's
+# brightest highlights exist regardless of base skin tone given adequate
+# light, so they separate "insufficient light" from "darker skin" better:
+# real measured 90th-percentile values across all 40 real annotated CFP
+# identities (80 images) ranged Dark 106-255 (mean 170.8), Light 157-255
+# (mean 194.6), Medium 109-255 (mean 195.0) -- the lowest real genuine
+# value observed, across every skin tone, was 106. A synthetic moderate
+# darkening (70% of original intensity) of a real Dark-skin genuine photo
+# measured 89, a more severe darkening (55%) measured 70 -- both clearly
+# below every real genuine value observed. 90 sits just below that real
+# genuine floor (106) with real margin, while still catching the tested
+# degraded cases. This measurably shrinks, not eliminates, the skin-tone
+# gap (aggregate mean-of-p90 gap Light-vs-Dark: 34.2 with the old mean
+# metric, 23.7 with this one, on the same real sample) -- the whole-image
+# mean's confound between skin tone and lighting isn't a threshold problem,
+# it can't be tuned away, only reduced by measuring something less
+# confounded. Only replaces the "too dark" side -- the "too bright" side
+# (BRIGHTNESS_MAX above) stays mean-based, since real genuine photos
+# routinely hit 255 at the 90th percentile from ordinary specular
+# highlights (glasses, glossy skin, jewelry) even when correctly exposed
+# overall, making a percentile-based overexposure check unusable.
+BRIGHTNESS_MIN_P90 = 90
+
 # CONTRAST_MIN calibrated against real measured values (brief Phase 2
 # Section 3's registration check, previously missing entirely -- confirmed
 # by grep before adding): real genuine self-collected captures (front,
@@ -54,13 +84,18 @@ GRID_EDGE_RATIO_MAX = 1.15
 
 def check_brightness(image):
     """
-    Returns the average pixel intensity (0-255) of the image and whether
-    it falls inside the acceptable brightness range.
+    Returns the average pixel intensity (0-255) of the image ("value",
+    unchanged meaning -- kept for backward compatibility with every
+    existing caller) and whether it falls inside the acceptable brightness
+    range. The "too dark" side of that range gate, and the separate
+    "p90_value" field, use the 90th-percentile pixel intensity instead of
+    the mean -- see BRIGHTNESS_MIN_P90's calibration comment for why.
     """
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY) if len(image.shape) == 3 else image
     mean_brightness = float(cv2.mean(gray)[0])
+    p90_brightness = float(np.percentile(gray, 90))
 
-    if mean_brightness < BRIGHTNESS_MIN:
+    if p90_brightness < BRIGHTNESS_MIN_P90:
         status = "fail"
         reason = "too dark"
     elif mean_brightness > BRIGHTNESS_MAX:
@@ -73,6 +108,7 @@ def check_brightness(image):
     return {
         "check": "brightness",
         "value": round(mean_brightness, 2),
+        "p90_value": round(p90_brightness, 2),
         "status": status,
         "reason": reason,
     }

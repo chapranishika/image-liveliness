@@ -38,13 +38,27 @@ def _linear_score(value, good_value, acceptable_value, worst_value):
 
 
 def score_brightness(frame):
+    """
+    The "too dark" direction scores on p90_value (90th-percentile pixel
+    intensity), not the whole-image mean -- see
+    src/quality_checks.py's BRIGHTNESS_MIN_P90 comment for the real
+    calibration data behind this and why it measurably reduces (not
+    eliminates) a real skin-tone quality-score gap the mean-based version
+    had. good_value=180/worst_value=20 calibrated against the same real
+    data: genuine p90 means by skin tone were Dark 170.8, Light 194.6,
+    Medium 195.0 -- 180 sits in that real cluster rather than only fitting
+    the lighter-skinned groups. The "too bright" direction is unaffected,
+    still mean-based (see BRIGHTNESS_MIN_P90's comment for why a
+    percentile approach doesn't work for overexposure).
+    """
     result = check_brightness(frame)
-    value = result["value"]
-    if value <= 145:
-        score = _linear_score(value, good_value=145, acceptable_value=100, worst_value=10)
+    mean_value = result["value"]
+    p90_value = result["p90_value"]
+    if mean_value <= 145:
+        score = _linear_score(p90_value, good_value=180, acceptable_value=120, worst_value=20)
     else:
-        score = _linear_score(value, good_value=145, acceptable_value=190, worst_value=245)
-    return {"name": "brightness", "raw_value": value, "score": score}
+        score = _linear_score(mean_value, good_value=145, acceptable_value=190, worst_value=245)
+    return {"name": "brightness", "raw_value": mean_value, "score": score}
 
 
 def score_blur(frame):
