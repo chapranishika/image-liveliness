@@ -4,6 +4,52 @@ This repository implements a production-ready, highly modular face registration 
 
 ---
 
+## 📊 Results
+
+Every number below is measured against real data (calibration images, real live camera sessions, or real profiling runs) and traceable to the script or report that produced it — not estimated. Full detail and methodology: [`data/Evaluation_Report.md`](data/Evaluation_Report.md) and [`docs/final_confirmation_report.md`](docs/final_confirmation_report.md).
+
+### Security Results
+
+**Deployed threshold: 0.38** — swept across candidate values against 595 real impostor pairs + 106 genuine pairs (CFP + self-collected, frontal-vs-frontal, the deployed verification path); gives the identical false-accept rate as the previous 0.40 default while rejecting one fewer genuine user in 106.
+- **FAR: 0.34%** (2/595) — false acceptance rate
+- **FRR: 14.15%** (15/106) — false rejection rate
+- **EER: 3.19%** at threshold 0.2642 — deliberately *not* deployed, since its FAR is too high for a security-critical use case. The evaluation report documents this trade-off explicitly rather than defaulting to the statistically "optimal" point.
+
+**Live physical attack testing — verified against the actual running app, not simulated.** Two different real presentation attacks, `DEBUG_CHALLENGE=1` logging capturing every decision in real time:
+
+| Attack | Attempts | Per-attempt fail ratio (trained model) |
+|---|---|---|
+| Video replay (playback on a second screen) | 2/2 caught | 11/11, then 5/5 |
+| Physical photo (hand-held, moved to defeat static-frame detection) | 3/3 caught | 3/5, then 3/3, then 3/3 |
+
+The lightweight frame-repetition heuristic contributed **zero** catches across all 5 attempts combined — the trained anti-spoof model did all of the real detection work, verified empirically rather than assumed. A genuine live user was unaffected in the same session immediately after a flagged attempt (0/6 false-flagged samples) — a caught attack doesn't lock out the real person.
+
+### Bugs Found Through Actual Testing
+
+- **Compliance-critical bug**: GDPR hard-delete silently failed via a foreign-key violation for any user who had ever completed a verification — invisible until the delete path was actually tested end-to-end (the prior test suite never logged a verification before calling delete).
+- **Config bug**: the health-check endpoint hardcoded its own database path independently of the app's `FACE_DB_PATH` override, so a relocated database would silently be checked at the wrong location.
+- **Security regression**: a critical active-liveness bypass was found and fixed same-day by testing the fix itself against a live user, not just shipping it and assuming it worked.
+
+### Fairness Audit — Including a Self-Correction
+
+The project's original demographic bias study was found to be built on auto-generated placeholder labels that had never been hand-corrected, despite being presented as real findings for months. This was caught, 100 identities (200 photos) were manually re-annotated by hand, and the corrected results **reversed the direction** of the original gender-bias finding.
+
+One identified root cause — skin-tone brightness bias, where whole-image mean brightness conflates "the room is dark" with "this person's skin is dark" — was traced and fixed: switched the metric to 90th-percentile highlight brightness (present on a face under adequate light regardless of skin tone). Verified with a true apples-to-apples comparison (old metric vs. new metric, same 100-identity/200-photo sample, not two different sample sizes):
+- Skin-tone brightness gap: **18.7 → 10.4 percentage points** (a 44% relative reduction), confirmed by re-computing the old metric against the exact same larger sample rather than comparing across sample sizes
+- Composite quality pass rate: **88.0%** overall, with **zero subgroups regressing** as a result of the fix
+- A second, smaller gender gap (contrast) was investigated the same way and found to have no established physical cause and too small a sample to fix responsibly — left disclosed rather than tuned to one dataset
+
+### Production Readiness & Performance
+
+- Docker image: **13.2GB → 6.7GB** (49% reduction), from routing the CPU-only deployment away from a default CUDA-bundled PyTorch wheel — verified by building both versions and comparing real `docker images` output.
+- Real profiled resource cost: ~28s one-time model warmup, ~1.2GB RAM once warm (not estimated).
+- Per-tick latency breakdown: 44–166ms of actual compute vs. 1.1–1.9s real wall-clock time per tick — the gap is documented as an honest architectural limitation of the rPPG (remote photoplethysmography) liveness layer, not glossed over.
+- CI publishes a new image to GHCR on every verified push to `main`, gated behind a real *runtime* smoke test (the container is started and its health endpoints polled) — not just a successful `docker build`.
+- 86 automated tests, ~73% coverage across the core pipeline and the FastAPI layer.
+- WCAG contrast audit found 2 real accessibility failures invisible to casual visual inspection (4.41:1 and 3.58:1 contrast ratios, both below the 4.5:1 WCAG AA minimum) — both fixed and re-verified with a regression test that was confirmed to actually catch the original bug before being trusted.
+
+---
+
 ## 🏗️ Project Architecture
 
 ```
@@ -37,17 +83,29 @@ This repository implements a production-ready, highly modular face registration 
 ├── app/
 │   ├── streamlit_app.py         # Streamlit automated-capture dashboard
 │   └── styles.py                # Elegant custom styling tokens and variables
-├── tests/                       # Pytest verification suite
-│   ├── conftest.py              # Pytest fixtures and mock environments
+├── tests/                       # 86 tests, ~73% coverage across src/ + api/ -- see Results above
+│   ├── conftest.py              # Pytest fixtures (temp isolated DB, real/synthetic image fixtures)
 │   ├── test_database_and_security.py
 │   ├── test_matching.py
-│   └── test_quality_and_liveness.py
+│   ├── test_quality_and_liveness.py
+│   ├── test_pipeline.py         # Full quality -> liveness -> matching orchestration
+│   ├── test_active_liveness_gate.py
+│   ├── test_liveness_active.py  # Replay-loop detector, blink/head-turn tick evaluators
+│   ├── test_duplicate_check.py
+│   ├── test_rppg.py
+│   ├── test_api_security.py     # API-key auth + rate limiter
+│   ├── test_api_health.py
+│   ├── test_api_endpoints.py    # Full register -> verify -> delete lifecycle via TestClient
+│   ├── test_polling_rerun_fallback.py
+│   └── playwright/              # Cross-browser UI contrast + accessibility regression suite
 ├── docs/
-│   ├── video_storyboard.md      # Storyboard script for client demonstration video
-│   └── Evaluation_Report.md     # Pipeline thresholds calibration and ROC curves analysis
+│   ├── Evaluation_Report.md     # Full calibration methodology, ROC curves, bias study, all corrections
+│   ├── final_confirmation_report.md
+│   ├── deployment.md
+│   ├── system_requirements.md
+│   └── Final_Report_Full.docx   # Full project narrative and phase-by-phase history
 └── data/
-    ├── celeba_spoof_sample/     # Curated CelebA-Spoof development sample
-    ├── cfp_sample/              # Curated CFP identity verification sample
+    ├── cfp_demographics.csv     # 100 real, hand-annotated identities (skin tone/gender/age)
     └── self_collected/          # User self-collected dataset
 ```
 
@@ -122,5 +180,5 @@ Verify that all database transaction logic, liveness checks, and matching algori
 2. **Identity Verification**: Toggle to **Verify Identity**. Align your face straight ahead. Once the automated capture acquires the frame, the system checks:
    - **Quality Score**: Assesses blur, lighting, centering, and pose according to compliance settings.
    - **Liveness detection**: Runs passive MiniFASNet spoof verification.
-   - **Matching**: Extracts ArcFace embeddings and performs a 1-to-N database lookup at our calibrated threshold of `0.40` (frontal-vs-frontal EER-informed, see `data/Evaluation_Report.md`).
+   - **Matching**: Extracts ArcFace embeddings and performs a 1-to-N database lookup at our calibrated threshold of `0.38` (frontal-vs-frontal EER-informed, see the Results section above and `data/Evaluation_Report.md`).
 3. **GDPR Right to be Forgotten**: Admins can use the **System Management & Audits** console at the bottom of the dashboard to soft-delete or permanently hard-delete user templates from the database.
